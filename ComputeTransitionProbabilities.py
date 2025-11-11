@@ -38,6 +38,11 @@ def compute_transition_probabilities_sparse(C:Const) -> list:
     coo_cols = [[] for input_i in range(num_inputs)]
     coo_rows = [[] for input_i in range(num_inputs)]
 
+    # Helper functions for populating coo table
+    append_data = [l.append for l in coo_data]
+    append_rows = [l.append for l in coo_rows]
+    append_cols = [l.append for l in coo_cols]
+
     class StateVar:
         Y = 0
         V = 1
@@ -86,6 +91,7 @@ def compute_transition_probabilities_sparse(C:Const) -> list:
         if p_spawn > 0:
             dspawn_j = copy(dhat_j)
             dspawn_j[m_min] = s
+            hspawn_j = copy(hhat_j)
 
         U = [
             [0, C.U_no_flap, 1, [0]],
@@ -105,22 +111,21 @@ def compute_transition_probabilities_sparse(C:Const) -> list:
                     next_state = (y_j, v_j, *dhat_j, *hhat_j)
                     j_index = state_to_index_dict[next_state]
 
-                    coo_data[input_index].append(p_flap * p_no_spawn)
-                    coo_rows[input_index].append(state_index)
-                    coo_cols[input_index].append(j_index)
+                    append_data[input_index](p_flap * p_no_spawn)
+                    append_rows[input_index](state_index)
+                    append_cols[input_index](j_index)
 
                 # Case 2: Spawn
                 if p_spawn > 0:
-                    hspawn_j = copy(hhat_j)
                     p_combined = p_flap * p_spawn * p_height
                     for height in S_h:
                         hspawn_j[m_min] = height
                         next_state = (y_j, v_j, *dspawn_j, *hspawn_j)
                         j_index = state_to_index_dict[next_state]
 
-                        coo_data[input_index].append(p_combined)
-                        coo_rows[input_index].append(state_index)
-                        coo_cols[input_index].append(j_index)
+                        append_data[input_index](p_combined)
+                        append_rows[input_index](state_index)
+                        append_cols[input_index](j_index)
 
     # Construct the sparse matrices
     P_sparse_list = []
