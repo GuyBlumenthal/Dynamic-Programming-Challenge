@@ -50,6 +50,9 @@ def compute_transition_probabilities(C:Const) -> np.array:
 
     state_to_index = lru_cache(maxsize=None)(C.state_to_index)
 
+    # Print Hello
+
+
     # Avoids repeated attribute lookups (e.g., 'C.Y') inside the loop.
     Y_limit = C.Y - 1
     G_limit = (C.G - 1) / 2
@@ -86,7 +89,7 @@ def compute_transition_probabilities(C:Const) -> np.array:
 
         p_spawn = (s - (D_min - 1)) / (X - D_min)
         p_spawn = min(1, max(0, p_spawn))
-        p_no_spwan = 1 - p_spawn
+        p_no_spawn = 1 - p_spawn
 
         # Find first empty d
         m_min = M - 1
@@ -94,6 +97,13 @@ def compute_transition_probabilities(C:Const) -> np.array:
             if dhat_j[m] == 0:
                 m_min = m
                 break
+
+        dspawn_j = None
+        hspawn_j = None
+        if p_spawn > 0:
+            dspawn_j = copy(dhat_j)
+            dspawn_j[m_min] = s
+            hspawn_j = copy(hhat_j)
 
         U = [ # input_index, u_k, p_flap, W_v
             [0, C.U_no_flap, 1, [0]],
@@ -108,7 +118,7 @@ def compute_transition_probabilities(C:Const) -> np.array:
                 v_j = min(V_max, max(-V_max, state_i[StateVar.V] + u_k + w_v - g))
 
                 # Case 1: No spawn
-                if p_spawn < 1:
+                if p_no_spawn > 0:
                     next_state = (
                         y_j,
                         v_j,
@@ -116,13 +126,10 @@ def compute_transition_probabilities(C:Const) -> np.array:
                         *hhat_j
                     )
 
-                    P[state_index, state_to_index(next_state), input_index] += p_flap * p_no_spwan
+                    P[state_index, state_to_index(next_state), input_index] += p_flap * p_no_spawn
 
                 # Case 2: Spawn
                 if p_spawn > 0:
-                    dspawn_j = copy(dhat_j)
-                    hspawn_j = copy(hhat_j)
-                    dspawn_j[m_min] = s
                     p_combined = p_flap * p_spawn * p_height
                     for height in S_h:
                         hspawn_j[m_min] = height
