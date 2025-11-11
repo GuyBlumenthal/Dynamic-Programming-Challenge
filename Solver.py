@@ -178,16 +178,10 @@ def solution_linear_prog(C: Const) -> tuple[np.array, np.array]:
 
     J_opt = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0]).x
 
-    for state in C.state_space:
-        state_index = C.state_to_index(state)
-
-        weighted_J = P[state_index, :, :].T @ J_opt
-
-        expected_values = Q[state_index, :] + weighted_J
-
-        u_opt[state_index] = C.input_space[np.argmin(expected_values)]
+    expected_values = Q + np.tensordot(P, J_opt, axes=([1], [0]))
+    optimal_indices = np.argmin(expected_values, axis=1)
+    u_opt = np.array(C.input_space)[optimal_indices]
 
     return J_opt, u_opt
-
 
 solution = time_def(solution_linear_prog)
