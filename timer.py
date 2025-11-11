@@ -44,6 +44,7 @@ def time_evaluate():
         print(f"\tDEF {timing[0]} : TIME {timing[1]:.8f}")
 
     from datetime import datetime
+    import git
 
     with open("log.txt", "a") as log:
-        log.write(f"[{datetime.now().strftime('%d/%m/%Y, %H:%M:%S')}] {total}\n")
+        log.write(f"{'~D' if git.Repo().is_dirty() else '  '} @{git.Repo().head.object.hexsha[:6]} [{datetime.now().strftime('%d/%m/%Y, %H:%M:%S')}] {total}\n")
