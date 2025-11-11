@@ -50,37 +50,47 @@ def compute_transition_probabilities(C:Const) -> np.array:
 
     state_to_index = lru_cache(maxsize=None)(C.state_to_index)
 
+    # Avoids repeated attribute lookups (e.g., 'C.Y') inside the loop.
+    Y_limit = C.Y - 1
+    G_limit = (C.G - 1) / 2
+    M = C.M
+    X, D_min = C.X, C.D_min
+    V_max, g = C.V_max, C.g
+    S_h, S_h_0 = C.S_h, C.S_h[0]
+    p_height = 1 / len(S_h)
+    U_strong_prob = 1 / (2 * C.V_dev + 1)
+    W_v = C.W_v
+
     # Loop through each state and possible actions, set the associated probabilities in P, and the rest remain 0
     for state_i in C.state_space:
         # Handle non input related state dynamics
         state_index = state_to_index(state_i)
 
         # Next height is known
-        y_j = min(C.Y - 1, max(0, state_i[StateVar.Y] + state_i[StateVar.V]))
+        y_j = min(Y_limit, max(0, state_i[StateVar.Y] + state_i[StateVar.V]))
 
         # Are we passing or drifting
         if state_i[StateVar.D_1] == 0:
             # Handle passing
-            if abs(state_i[StateVar.Y] - state_i[StateVar.H_1]) > (C.G - 1) / 2:
+            if abs(state_i[StateVar.Y] - state_i[StateVar.H_1]) > G_limit:
                 # Collision, no transition in P
                 continue
             dhat_j = [state_i[StateVar.D_2] - 1, *state_i[StateVar.D_2:StateVar.D_M], 0]
-            hhat_j = [*state_i[StateVar.H_2:StateVar.H_M + 1], Const.S_h[0]]
+            hhat_j = [*state_i[StateVar.H_2:StateVar.H_M + 1], S_h_0]
         else:
             # Handle drifting -> This is deterministic
             dhat_j = [state_i[StateVar.D_1] - 1, *state_i[StateVar.D_2:StateVar.D_M + 1]]
             hhat_j = [*state_i[StateVar.H_1:StateVar.H_M + 1]]
 
-        s = C.X - 1 - sum(dhat_j)
+        s = X - 1 - sum(dhat_j)
 
-        p_spawn = (s - (C.D_min - 1)) / (C.X - C.D_min)
+        p_spawn = (s - (D_min - 1)) / (X - D_min)
         p_spawn = min(1, max(0, p_spawn))
-
-        p_height = 1 / len(C.S_h)
+        p_no_spwan = 1 - p_spawn
 
         # Find first empty d
-        m_min = C.M - 1
-        for m in range(1, C.M):
+        m_min = M - 1
+        for m in range(1, M):
             if dhat_j[m] == 0:
                 m_min = m
                 break
@@ -88,14 +98,14 @@ def compute_transition_probabilities(C:Const) -> np.array:
         U = [ # input_index, u_k, p_flap, W_v
             [0, C.U_no_flap, 1, [0]],
             [1, C.U_weak, 1, [0]],
-            [2, C.U_strong, 1 / (2 * C.V_dev + 1), C.W_v]
+            [2, C.U_strong, U_strong_prob, W_v]
         ]
 
         for input_index, u_k, p_flap, W_v in U:
             # Select flap disturbance
             for w_v in W_v:
 
-                v_j = min(C.V_max, max(-C.V_max, state_i[StateVar.V] + u_k + w_v - C.g))
+                v_j = min(V_max, max(-V_max, state_i[StateVar.V] + u_k + w_v - g))
 
                 # Case 1: No spawn
                 if p_spawn < 1:
@@ -106,15 +116,15 @@ def compute_transition_probabilities(C:Const) -> np.array:
                         *hhat_j
                     )
 
-                    P[state_index, state_to_index(next_state), input_index] += p_flap * (1 - p_spawn)
+                    P[state_index, state_to_index(next_state), input_index] += p_flap * p_no_spwan
 
                 # Case 2: Spawn
-                dspawn_j = copy(dhat_j)
-                hspawn_j = copy(hhat_j)
                 if p_spawn > 0:
+                    dspawn_j = copy(dhat_j)
+                    hspawn_j = copy(hhat_j)
                     dspawn_j[m_min] = s
                     p_combined = p_flap * p_spawn * p_height
-                    for height in C.S_h:
+                    for height in S_h:
                         hspawn_j[m_min] = height
 
                         next_state = (
