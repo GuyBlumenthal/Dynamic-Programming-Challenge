@@ -21,9 +21,8 @@ from copy import copy
 
 from functools import lru_cache
 
+# TODO: Try different versions (csc, csr, bsr, coo)
 from scipy.sparse import csc_matrix as sparse_matrix
-
-mdp_dict = None
 
 def compute_transition_probabilities_sparse(C:Const) -> list:
     """Computes the transition probability matrix P as a list of sparse matrices."""
@@ -49,8 +48,8 @@ def compute_transition_probabilities_sparse(C:Const) -> list:
         H_2 = H_1 + 1
         H_M = H_1 + C.M - 1
 
-    # We will be indexing the state often, create a wrapper for the state_to_index function with an lru_cache
-    state_to_index = lru_cache(maxsize=None)(C.state_to_index)
+    # Cache states
+    state_to_index_dict = {state: i for i, state in enumerate(C.state_space)}
 
     # Store variables once instead of recalculating
     Y_limit = C.Y - 1
@@ -64,7 +63,7 @@ def compute_transition_probabilities_sparse(C:Const) -> list:
     W_v = C.W_v
 
     for state_i in C.state_space:
-        state_index = state_to_index(state_i)
+        state_index = state_to_index_dict[state_i]
         y_j = min(Y_limit, max(0, state_i[StateVar.Y] + state_i[StateVar.V]))
         if state_i[StateVar.D_1] == 0:
             if abs(state_i[StateVar.Y] - state_i[StateVar.H_1]) > G_limit:
@@ -104,7 +103,7 @@ def compute_transition_probabilities_sparse(C:Const) -> list:
                 # Case 1: No spawn
                 if p_no_spawn > 0:
                     next_state = (y_j, v_j, *dhat_j, *hhat_j)
-                    j_index = state_to_index(next_state)
+                    j_index = state_to_index_dict[next_state]
 
                     coo_data[input_index].append(p_flap * p_no_spawn)
                     coo_rows[input_index].append(state_index)
@@ -117,7 +116,7 @@ def compute_transition_probabilities_sparse(C:Const) -> list:
                     for height in S_h:
                         hspawn_j[m_min] = height
                         next_state = (y_j, v_j, *dspawn_j, *hspawn_j)
-                        j_index = state_to_index(next_state)
+                        j_index = state_to_index_dict[next_state]
 
                         coo_data[input_index].append(p_combined)
                         coo_rows[input_index].append(state_index)

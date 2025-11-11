@@ -43,6 +43,13 @@ def apply_overrides_and_instantiate(overrides: dict) -> Const:
             setattr(Const, k, v)
     return Const()
 
+def run_solution(test_nr: int) -> tuple[np.array, np.array]:
+    # Load constants overrides
+    with open(f"tests/test{test_nr}.pkl", "rb") as f:
+        overrides = pickle.load(f)
+    C = apply_overrides_and_instantiate(overrides)
+
+    _ = solution(C)
 
 def run_test(test_nr: int) -> None:
     """Run a single test case.

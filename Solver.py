@@ -169,6 +169,44 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
 
     return J_opt, u_opt
 
+def solution_value_iteration(C: Const, epsilon=1e-5, max_iter=10000) -> tuple[np.array, np.array]:
+    """Computes the optimal cost and policy using Value Iteration."""
+
+    P = compute_transition_probabilities(C)
+    Q = compute_expected_stage_cost(C)
+
+    # 1. Initialize J (Value function)
+    J = np.zeros(C.K)
+
+    for i in range(max_iter):
+        J_old = J
+
+        # Bellman update
+        weighted_J_cols = []
+        for l in range(C.L):
+            weighted_J_l = P[l] @ J_old
+            weighted_J_cols.append(weighted_J_l)
+
+        weighted_J_all = np.stack(weighted_J_cols, axis=1)
+        expected_values = Q + weighted_J_all
+
+        # J_k+1 = min_u [ Q(s,u) + P(s'|s,u) @ J_k(s') ]
+        J = np.min(expected_values, axis=1)
+
+        # 3. Check for convergence
+        if np.max(np.abs(J - J_old)) < epsilon:
+            print(f"Value Iteration converged in {i+1} iterations.")
+            break
+    else:
+        print(f"Value Iteration hit max iterations ({max_iter}).")
+
+    # 4. Recover the optimal policy (u_opt)
+    # We just re-use the final `expected_values` from the last iteration
+    optimal_indices = np.argmin(expected_values, axis=1)
+    u_opt = np.array(C.input_space)[optimal_indices]
+
+    return J, u_opt
+
 solution = time_def(solution_linear_prog_sparse)
 
 
