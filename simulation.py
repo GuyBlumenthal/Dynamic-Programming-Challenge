@@ -18,10 +18,10 @@ CELL_WIDTH = 48     # in pixels
 # ----- class for state representation -----
 class State:
     """Lightweight container for the current simulation state."""
-    
+
     __slots__ = ("C", "y", "v", "D", "H")
-    
-    def __init__(self, 
+
+    def __init__(self,
                  C: Const,
                  y: int,
                  v: int,
@@ -48,13 +48,13 @@ class State:
         self.v = v
         self.D = D
         self.H = H
-        
+
     def to_index(self) -> int:
         """Return the index of this state in the enumeration."""
         x = (self.y, self.v, *self.D, *self.H)
         return self.C.state_to_index(x)
-        
-    
+
+
 def get_init_state(C: Const, rng: Random) -> State:
     """Generate the initial state for the simulation.
 
@@ -93,10 +93,10 @@ def step(C: Const, x: State, u: int, rng: Random) -> Tuple[State, bool]:
         if a collision occurred and the run ends.
     """
     y, v, D, H = x.y, x.v, x.D, x.H
-    
+
     if is_collision(C, y, D[0], H[0]):
         return x, True   # End simulation run
-    
+
     # Pre-spawn update
     hat_D, hat_H = D.copy(), H.copy()
     if is_passing(C, y, D[0], H[0]):
@@ -109,7 +109,7 @@ def step(C: Const, x: State, u: int, rng: Random) -> Tuple[State, bool]:
         hat_H[C.M-1] = C.S_h[0]
     else:
         hat_D[0] = D[0] - 1
-        
+
     # Check if new obstacle is spawned
     s = (C.X - 1) - sum(hat_D)
     if rng.random() <= spawn_probability(C, s):
@@ -121,14 +121,14 @@ def step(C: Const, x: State, u: int, rng: Random) -> Tuple[State, bool]:
                 break
         hat_D[k] = np.clip(s, C.D_min, C.X - 1)
         hat_H[k] = rng.choice(C.S_h)
-        
+
     # Strong-flap uncertainty
     W_flap = range(-C.V_dev, C.V_dev + 1)
     if u == C.U_strong:
         w_flap = rng.choice(W_flap)
     else:
         w_flap = 0
-        
+
     # next-state update
     y_next = int(np.clip(y + v, 0, C.Y - 1))
     v_next = int(np.clip(v + u + w_flap - C.g, -C.V_max, C.V_max))
@@ -139,7 +139,7 @@ def step(C: Const, x: State, u: int, rng: Random) -> Tuple[State, bool]:
 # ----- pygame renderer -----
 class Renderer:
     """Pygame renderer for the grid world, bird, and obstacles."""
-    
+
     def __init__(self, C: Const) -> None:
         """Create a rendering context and window."""
         pygame.init()
@@ -157,7 +157,7 @@ class Renderer:
         self.C_BIRD = pygame.color.Color(20, 20, 20)
         self.C_OBST = pygame.color.Color(40, 120, 200)
         self.C_TEXT = pygame.color.Color(127, 127, 127)
-        
+
     def draw_grid(self) -> None:
         """Draw the grid lines."""
         for x in range(self.C.X + 1):
@@ -174,7 +174,7 @@ class Renderer:
                 (self.width, y * CELL_WIDTH),
                 1,
             )
-            
+
     def draw_bird(self, y: int) -> None:
         """Draw the bird at vertical position y (0 at bottom)."""
         xpix = 0
@@ -192,7 +192,7 @@ class Renderer:
             rect,
             border_radius = offset // 2
         )
-        
+
     def draw_obstacles(self, D: List[int], H: List[int]) -> None:
         """Draw all active obstacles with a vertical gap at each H[i].
 
@@ -233,15 +233,15 @@ class Renderer:
                 rows_above = (self.C.Y - 1) - gap_hi
                 height_pix = rows_above * CELL_WIDTH
                 rect_up = pygame.Rect(
-                    xcol * CELL_WIDTH, 
-                    0, 
-                    CELL_WIDTH, 
+                    xcol * CELL_WIDTH,
+                    0,
+                    CELL_WIDTH,
                     height_pix
                 )
                 pygame.draw.rect(
                     self.screen, self.C_OBST, rect_up, border_radius = 2
                 )
-    
+
     def draw_hud(
         self,
         step_count: int,
@@ -275,12 +275,12 @@ class Renderer:
 
             self.screen.blit(banner1, rect1)
             self.screen.blit(banner2, rect2)
-            
+
     def tick(self) -> None:
         """Limit the frame rate to FPS."""
         self.clock.tick(FPS)
-        
-        
+
+
 # ----- simulation runner -----
 def run_simulation(C: Const, policy: np.ndarray | None = None) -> None:
     """Run the main simulation loop.
@@ -296,14 +296,14 @@ def run_simulation(C: Const, policy: np.ndarray | None = None) -> None:
     is_manual = policy is None
     rng = Random(RNG_SEED)
     renderer = Renderer(C)
-    
+
     x = get_init_state(C, rng)
     step_count = 0
     is_gameover = False
 
     while True:
         u = 0  # default input
-        
+
         # Handle events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -318,7 +318,7 @@ def run_simulation(C: Const, policy: np.ndarray | None = None) -> None:
                     x = get_init_state(C, rng)
                     step_count = 0
                     is_gameover = False
-            
+
         if is_manual:
             keys = pygame.key.get_pressed()
             if keys[pygame.K_s]:
@@ -329,7 +329,7 @@ def run_simulation(C: Const, policy: np.ndarray | None = None) -> None:
             u = policy[x.to_index()]
             if u not in C.input_space:
                 u = 0
-                
+
         # Rendering
         renderer.screen.fill(renderer.C_BACK)
         renderer.draw_grid()
@@ -340,7 +340,7 @@ def run_simulation(C: Const, policy: np.ndarray | None = None) -> None:
         )
         pygame.display.flip()
         renderer.tick()
-                 
+
         # Step simulation
         if not is_gameover:
             next_x, hit = step(C, x, u, rng)
@@ -349,6 +349,6 @@ def run_simulation(C: Const, policy: np.ndarray | None = None) -> None:
             else:
                 x = next_x
                 step_count += 1
-        
+
 if __name__ == "__main__":
     run_simulation(default_C)

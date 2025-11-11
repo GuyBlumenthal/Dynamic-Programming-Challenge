@@ -30,13 +30,8 @@ def compute_expected_stage_cost(C: Const) -> np.array:
             - L is the size of the input space; and
             - Q[i,l] corresponds to the expected stage cost incurred when using input l at state i.
     """
-    Q = np.ones((C.K, C.L)) * np.inf
-
-    for state in C.state_space:
-        state_index = C.state_to_index(state)
-
-        Q[state_index, 0] = -1                # None
-        Q[state_index, 1] = C.lam_weak - 1    # Weak
-        Q[state_index, 2] = C.lam_strong - 1  # Strong
-
-    return Q
+    return np.tile(np.array([
+        -1,                # Cost for action 0 (None)
+        C.lam_weak - 1,    # Cost for action 1 (Weak)
+        C.lam_strong - 1   # Cost for action 2 (Strong)
+    ]), (C.K, 1))

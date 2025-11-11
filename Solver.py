@@ -91,13 +91,7 @@ def solution_linear_prog(C: Const) -> tuple[np.array, np.array]:
         np.eye(C.K) - P[:, :, 2],
     ])
 
-    b = []
-    for u in range(3):
-        for state in C.state_space:
-            i = C.state_to_index(state)
-            b.append(Q[i, u])
-    b = np.array(b)
-
+    b = Q.flatten(order='F')
 
     J_opt = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0]).x
 
