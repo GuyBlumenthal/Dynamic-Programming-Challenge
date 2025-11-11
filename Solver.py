@@ -18,6 +18,7 @@ Institute for Dynamic Systems and Control
 
 import numpy as np
 from scipy.optimize import linprog
+from scipy.sparse import csc_matrix, vstack, eye
 from Const import Const
 
 from ComputeExpectedStageCosts import compute_expected_stage_cost
@@ -102,4 +103,60 @@ def solution_linear_prog(C: Const) -> tuple[np.array, np.array]:
 
     return J_opt, u_opt
 
-solution = time_def(solution_linear_prog)
+def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
+    """Computes the optimal cost and the optimal control policy.
+    (Optimized with sparse LP)
+    """
+    J_opt = np.zeros(C.K)
+    u_opt = np.zeros(C.K)
+
+    P = compute_transition_probabilities(C)
+    Q = compute_expected_stage_cost(C)
+
+    c = -1 * np.ones(C.K)
+
+    # --- OPTIMIZATION: Build A as a Sparse Matrix ---
+
+    # 1. Create a sparse identity matrix (CSC format is good for column math)
+    I_sparse = eye(C.K, format='csc')
+
+    # 2. Create a list to hold the sparse blocks (I - P_l)
+    A_blocks = []
+
+    # 3. Loop over all actions (assuming C.L is the number of actions)
+    for l in range(C.L):
+        # Convert the dense P slice to a sparse matrix
+        P_l_sparse = csc_matrix(P[:, :, l])
+
+        # Add the sparse (I - P_l) block to our list
+        A_blocks.append(I_sparse - P_l_sparse)
+
+    # 4. Stack all blocks vertically into one tall sparse matrix
+    # This is the sparse equivalent of np.concatenate or pre-allocation
+    A = vstack(A_blocks, format='csc')
+
+    # --- END OPTIMIZATION ---
+
+    b = Q.flatten(order='F')
+
+    # --- OPTIMIZATION: Specify a fast solver method ---
+    # 'highs-ipm' (Interior-Point Method) is excellent for
+    # large, sparse problems like this one.
+    res = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0], method='highs-ipm')
+
+    if not res.success:
+        print("Warning: Linear program did not solve successfully.")
+        # Fallback to the default solver if IPM fails
+        res = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0], method='highs')
+
+    J_opt = res.x
+    # --- END OPTIMIZATION ---
+
+    # This part is already fast and vectorized
+    expected_values = Q + np.tensordot(P, J_opt, axes=([1], [0]))
+    optimal_indices = np.argmin(expected_values, axis=1)
+    u_opt = np.array(C.input_space)[optimal_indices]
+
+    return J_opt, u_opt
+
+solution = time_def(solution_linear_prog_sparse)
