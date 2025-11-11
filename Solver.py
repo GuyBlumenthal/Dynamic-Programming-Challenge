@@ -138,11 +138,8 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
 
     # 3. Loop over all actions
     for l in range(C.L):
-        # Convert the dense P slice to a sparse matrix
-        P_l_sparse = csc_matrix(P[:, :, l])
-
         # Add the sparse (I - P_l) block to our list
-        A_blocks.append(I_sparse - P_l_sparse)
+        A_blocks.append(I_sparse - P[l])
 
     # 4. Stack all blocks vertically into one sparse matrix
     A = vstack(A_blocks, format='csc')
@@ -155,49 +152,6 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
 
     J_opt = res.x
 
-    expected_values = Q + np.tensordot(P, J_opt, axes=([1], [0]))
-    optimal_indices = np.argmin(expected_values, axis=1)
-    u_opt = np.array(C.input_space)[optimal_indices]
-
-    return J_opt, u_opt
-
-def solution_linear_sparse_2(C: Const) -> tuple[np.array, np.array]:
-    """Computes the optimal cost and the optimal control policy."""
-    J_opt = np.zeros(C.K)
-    u_opt = np.zeros(C.K)
-
-    # P is now a list of 3 sparse (K, K) csc_matrices
-    P = compute_transition_probabilities(C)
-    Q = compute_expected_stage_cost(C)
-
-    c = -1 * np.ones(C.K)
-
-    # --- OPTIMIZATION: Build A from sparse P list ---
-    I_sparse = eye(C.K, format='csc')
-    A_blocks = []
-
-    # Loop over all actions (C.L)
-    for l in range(C.L):
-        # P[l] is already the sparse (K, K) matrix for action l
-        A_blocks.append(I_sparse - P[l])
-
-    A = vstack(A_blocks, format='csc')
-    # --- END OPTIMIZATION ---
-
-    b = Q.flatten(order='F')
-
-    res = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0], method='highs-ipm')
-
-    if not res.success:
-        print("Warning: Linear program did not solve successfully.")
-        res = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0], method='highs')
-
-    J_opt = res.x
-
-    # --- OPTIMIZATION: Replace np.tensordot ---
-    # The original was: Q + np.tensordot(P, J_opt, axes=([1], [0]))
-    # This is equivalent to Q + [P_0 @ J_opt, P_1 @ J_opt, P_2 @ J_opt]
-
     # Create a list of weighted_J vectors, one for each action l
     weighted_J_cols = []
     for l in range(C.L):
@@ -208,17 +162,13 @@ def solution_linear_sparse_2(C: Const) -> tuple[np.array, np.array]:
 
     # Stack the (K,) vectors as columns into a (K, L) dense array
     weighted_J_all = np.stack(weighted_J_cols, axis=1)
-
-    # This is identical to the tensordot result
     expected_values = Q + weighted_J_all
-    # --- END OPTIMIZATION ---
 
     optimal_indices = np.argmin(expected_values, axis=1)
     u_opt = np.array(C.input_space)[optimal_indices]
 
     return J_opt, u_opt
 
-
-solution = time_def(solution_linear_sparse_2)
+solution = time_def(solution_linear_prog_sparse)
 
 

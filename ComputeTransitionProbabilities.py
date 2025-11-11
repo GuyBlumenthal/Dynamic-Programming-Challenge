@@ -21,25 +21,25 @@ from copy import copy
 
 from functools import lru_cache
 
-from scipy.sparse import csc_matrix  # <-- Import sparse constructor
+from scipy.sparse import csc_matrix as sparse_matrix
 
 mdp_dict = None
 
-def compute_transition_probabilities_sparse(C:Const) -> list: # <-- Return type is now list
+def compute_transition_probabilities_sparse(C:Const) -> list:
     """Computes the transition probability matrix P as a list of sparse matrices."""
 
-    # --- OPTIMIZATION: Build in COO format ---
-    # We create lists to store the (data, row, col) tuples for each action l
-    # P[i,j,l] += prob  ->  coo_data[l].append(prob)
-    #                      coo_rows[l].append(i)
-    #                      coo_cols[l].append(j)
-    coo_data = [[], [], []] # data for P_0, P_1, P_2
-    coo_rows = [[], [], []] # row indices for P_0, P_1, P_2
-    coo_cols = [[], [], []] # col indices for P_0, P_1, P_2
-    # --- END OPTIMIZATION ---
+    # Each action in C.input_space will have its own sparse probability matrix
+    num_inputs = len(C.input_space)
+
+    # A calculated probability P[curr_state, next_state, action] is stored as
+    #   coo_data[action] = P[curr_state, next_state, action]
+    #   coo_cols[action] = curr_state
+    #   coo_rows[action] = next_state
+    coo_data = [[] for input_i in range(num_inputs)]
+    coo_cols = [[] for input_i in range(num_inputs)]
+    coo_rows = [[] for input_i in range(num_inputs)]
 
     class StateVar:
-        # ... (StateVar class remains the same) ...
         Y = 0
         V = 1
         D_1 = 2
@@ -49,9 +49,10 @@ def compute_transition_probabilities_sparse(C:Const) -> list: # <-- Return type 
         H_2 = H_1 + 1
         H_M = H_1 + C.M - 1
 
+    # We will be indexing the state often, create a wrapper for the state_to_index function with an lru_cache
     state_to_index = lru_cache(maxsize=None)(C.state_to_index)
 
-    # ... (Local variable setup remains the same) ...
+    # Store variables once instead of recalculating
     Y_limit = C.Y - 1
     G_limit = (C.G - 1) / 2
     M = C.M
@@ -63,7 +64,6 @@ def compute_transition_probabilities_sparse(C:Const) -> list: # <-- Return type 
     W_v = C.W_v
 
     for state_i in C.state_space:
-        # ... (All logic for y_j, dhat_j, hhat_j, s, p_spawn, m_min remains the same) ...
         state_index = state_to_index(state_i)
         y_j = min(Y_limit, max(0, state_i[StateVar.Y] + state_i[StateVar.V]))
         if state_i[StateVar.D_1] == 0:
@@ -94,6 +94,9 @@ def compute_transition_probabilities_sparse(C:Const) -> list: # <-- Return type 
             [2, C.U_strong, U_strong_prob, W_v]
         ]
 
+        # Each input will push to a seperate index in coo_*
+        # Important note: Duplicate entries will be SUMMED!
+        # This means that we do not have to worry about two inputs resulting in the same next_state (See += in compute_transition_probabilities)
         for input_index, u_k, p_flap, W_v_list in U:
             for w_v in W_v_list:
                 v_j = min(V_max, max(-V_max, state_i[StateVar.V] + u_k + w_v - g))
@@ -103,11 +106,9 @@ def compute_transition_probabilities_sparse(C:Const) -> list: # <-- Return type 
                     next_state = (y_j, v_j, *dhat_j, *hhat_j)
                     j_index = state_to_index(next_state)
 
-                    # --- OPTIMIZATION: Append to COO lists ---
                     coo_data[input_index].append(p_flap * p_no_spawn)
                     coo_rows[input_index].append(state_index)
                     coo_cols[input_index].append(j_index)
-                    # --- END OPTIMIZATION ---
 
                 # Case 2: Spawn
                 if p_spawn > 0:
@@ -118,21 +119,18 @@ def compute_transition_probabilities_sparse(C:Const) -> list: # <-- Return type 
                         next_state = (y_j, v_j, *dspawn_j, *hspawn_j)
                         j_index = state_to_index(next_state)
 
-                        # --- OPTIMIZATION: Append to COO lists ---
                         coo_data[input_index].append(p_combined)
                         coo_rows[input_index].append(state_index)
                         coo_cols[input_index].append(j_index)
-                        # --- END OPTIMIZATION ---
 
-    # --- OPTIMIZATION: Construct sparse matrices ---
+    # Construct the sparse matrices
     P_sparse_list = []
     for l in range(C.L):
-        P_l = csc_matrix(
+        P_l = sparse_matrix(
             (coo_data[l], (coo_rows[l], coo_cols[l])),
             shape=(C.K, C.K)
         )
         P_sparse_list.append(P_l)
-    # --- END OPTIMIZATION ---
 
     return P_sparse_list
 
@@ -162,9 +160,6 @@ def compute_transition_probabilities(C:Const) -> np.array:
         H_M = H_1 + C.M - 1
 
     state_to_index = lru_cache(maxsize=None)(C.state_to_index)
-
-    # Print Hello
-
 
     # Avoids repeated attribute lookups (e.g., 'C.Y') inside the loop.
     Y_limit = C.Y - 1
