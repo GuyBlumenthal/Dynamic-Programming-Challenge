@@ -21,7 +21,120 @@ from copy import copy
 
 from functools import lru_cache
 
+from scipy.sparse import csc_matrix  # <-- Import sparse constructor
+
 mdp_dict = None
+
+def compute_transition_probabilities_sparse(C:Const) -> list: # <-- Return type is now list
+    """Computes the transition probability matrix P as a list of sparse matrices."""
+
+    # --- OPTIMIZATION: Build in COO format ---
+    # We create lists to store the (data, row, col) tuples for each action l
+    # P[i,j,l] += prob  ->  coo_data[l].append(prob)
+    #                      coo_rows[l].append(i)
+    #                      coo_cols[l].append(j)
+    coo_data = [[], [], []] # data for P_0, P_1, P_2
+    coo_rows = [[], [], []] # row indices for P_0, P_1, P_2
+    coo_cols = [[], [], []] # col indices for P_0, P_1, P_2
+    # --- END OPTIMIZATION ---
+
+    class StateVar:
+        # ... (StateVar class remains the same) ...
+        Y = 0
+        V = 1
+        D_1 = 2
+        D_2 = D_1 + 1
+        D_M = D_1 + C.M - 1
+        H_1 = D_M + 1
+        H_2 = H_1 + 1
+        H_M = H_1 + C.M - 1
+
+    state_to_index = lru_cache(maxsize=None)(C.state_to_index)
+
+    # ... (Local variable setup remains the same) ...
+    Y_limit = C.Y - 1
+    G_limit = (C.G - 1) / 2
+    M = C.M
+    X, D_min = C.X, C.D_min
+    V_max, g = C.V_max, C.g
+    S_h, S_h_0 = C.S_h, C.S_h[0]
+    p_height = 1 / len(S_h)
+    U_strong_prob = 1 / (2 * C.V_dev + 1)
+    W_v = C.W_v
+
+    for state_i in C.state_space:
+        # ... (All logic for y_j, dhat_j, hhat_j, s, p_spawn, m_min remains the same) ...
+        state_index = state_to_index(state_i)
+        y_j = min(Y_limit, max(0, state_i[StateVar.Y] + state_i[StateVar.V]))
+        if state_i[StateVar.D_1] == 0:
+            if abs(state_i[StateVar.Y] - state_i[StateVar.H_1]) > G_limit:
+                continue
+            dhat_j = [state_i[StateVar.D_2] - 1, *state_i[StateVar.D_2:StateVar.D_M], 0]
+            hhat_j = [*state_i[StateVar.H_2:StateVar.H_M + 1], S_h_0]
+        else:
+            dhat_j = [state_i[StateVar.D_1] - 1, *state_i[StateVar.D_2:StateVar.D_M + 1]]
+            hhat_j = [*state_i[StateVar.H_1:StateVar.H_M + 1]]
+        s = X - 1 - sum(dhat_j)
+        p_spawn = (s - (D_min - 1)) / (X - D_min)
+        p_spawn = min(1, max(0, p_spawn))
+        p_no_spawn = 1 - p_spawn
+        m_min = M - 1
+        for m in range(1, M):
+            if dhat_j[m] == 0:
+                m_min = m
+                break
+        dspawn_j = None
+        if p_spawn > 0:
+            dspawn_j = copy(dhat_j)
+            dspawn_j[m_min] = s
+
+        U = [
+            [0, C.U_no_flap, 1, [0]],
+            [1, C.U_weak, 1, [0]],
+            [2, C.U_strong, U_strong_prob, W_v]
+        ]
+
+        for input_index, u_k, p_flap, W_v_list in U:
+            for w_v in W_v_list:
+                v_j = min(V_max, max(-V_max, state_i[StateVar.V] + u_k + w_v - g))
+
+                # Case 1: No spawn
+                if p_no_spawn > 0:
+                    next_state = (y_j, v_j, *dhat_j, *hhat_j)
+                    j_index = state_to_index(next_state)
+
+                    # --- OPTIMIZATION: Append to COO lists ---
+                    coo_data[input_index].append(p_flap * p_no_spawn)
+                    coo_rows[input_index].append(state_index)
+                    coo_cols[input_index].append(j_index)
+                    # --- END OPTIMIZATION ---
+
+                # Case 2: Spawn
+                if p_spawn > 0:
+                    hspawn_j = copy(hhat_j)
+                    p_combined = p_flap * p_spawn * p_height
+                    for height in S_h:
+                        hspawn_j[m_min] = height
+                        next_state = (y_j, v_j, *dspawn_j, *hspawn_j)
+                        j_index = state_to_index(next_state)
+
+                        # --- OPTIMIZATION: Append to COO lists ---
+                        coo_data[input_index].append(p_combined)
+                        coo_rows[input_index].append(state_index)
+                        coo_cols[input_index].append(j_index)
+                        # --- END OPTIMIZATION ---
+
+    # --- OPTIMIZATION: Construct sparse matrices ---
+    P_sparse_list = []
+    for l in range(C.L):
+        P_l = csc_matrix(
+            (coo_data[l], (coo_rows[l], coo_cols[l])),
+            shape=(C.K, C.K)
+        )
+        P_sparse_list.append(P_l)
+    # --- END OPTIMIZATION ---
+
+    return P_sparse_list
 
 def compute_transition_probabilities(C:Const) -> np.array:
     """Computes the transition probability matrix P.
