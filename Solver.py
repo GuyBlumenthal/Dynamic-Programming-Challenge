@@ -85,11 +85,12 @@ def solution_linear_prog(C: Const) -> tuple[np.array, np.array]:
     Q = compute_expected_stage_cost(C)
 
     c = -1 * np.ones(C.K)
-    A = np.concatenate([
-        np.eye(C.K) - P[:, :, 0],
-        np.eye(C.K) - P[:, :, 1],
-        np.eye(C.K) - P[:, :, 2],
-    ])
+
+    A = np.empty((C.K * C.L, C.K))
+    I = np.eye(C.K)
+    A[0:C.K, :] = I - P[:, :, 0]
+    A[C.K:2*C.K, :] = I - P[:, :, 1]
+    A[2*C.K:3*C.K, :] = I - P[:, :, 2]
 
     b = Q.flatten(order='F')
 
