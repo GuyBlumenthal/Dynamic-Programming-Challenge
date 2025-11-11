@@ -19,6 +19,8 @@ import numpy as np
 from Const import Const
 from copy import copy
 
+from functools import lru_cache
+
 mdp_dict = None
 
 def compute_transition_probabilities(C:Const) -> np.array:
@@ -46,10 +48,12 @@ def compute_transition_probabilities(C:Const) -> np.array:
         H_2 = H_1 + 1
         H_M = H_1 + C.M - 1
 
+    state_to_index = lru_cache(maxsize=None)(C.state_to_index)
+
     # Loop through each state and possible actions, set the associated probabilities in P, and the rest remain 0
     for state_i in C.state_space:
         # Handle non input related state dynamics
-        state_index = C.state_to_index(state_i)
+        state_index = state_to_index(state_i)
 
         # Next height is known
         y_j = min(C.Y - 1, max(0, state_i[StateVar.Y] + state_i[StateVar.V]))
@@ -102,7 +106,7 @@ def compute_transition_probabilities(C:Const) -> np.array:
                         *hhat_j
                     )
 
-                    P[state_index, C.state_to_index(next_state), input_index] += p_flap * (1 - p_spawn)
+                    P[state_index, state_to_index(next_state), input_index] += p_flap * (1 - p_spawn)
 
                 # Case 2: Spawn
                 dspawn_j = copy(dhat_j)
@@ -120,6 +124,6 @@ def compute_transition_probabilities(C:Const) -> np.array:
                             *hspawn_j
                         )
 
-                        P[state_index, C.state_to_index(next_state), input_index] += p_combined
+                        P[state_index, state_to_index(next_state), input_index] += p_combined
 
     return P
