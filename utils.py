@@ -165,8 +165,8 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
                 if d1 <= 0 and d2 == 0:
                     continue
 
-            # Recurse with the added d and pop after completing the branch
-            current_d_list.append(d)
+            # Recurse with the added d
+            current_d_list[d_index] = d
             _build_d_recursive(
                 y, v,
                 current_d_list,
@@ -177,12 +177,12 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
                 # if we are adding a zero *after* d1)
                 zero_seen or (d_index > 0 and d == 0)
             )
-            current_d_list.pop() # Backtrack
 
     # The outer loops *must* be y, then v, to maintain order
     for y in S_y:
         for v in S_v:
+            current_d_list_for_v = [0] * M
             # Start the recursion for the D-vector
-            _build_d_recursive(y, v, [], 0, 0, False)
+            _build_d_recursive(y, v, current_d_list_for_v, 0, 0, False)
 
     return len(state_to_index_dict), state_to_index_dict

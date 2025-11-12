@@ -17,7 +17,6 @@ Institute for Dynamic Systems and Control
 
 import numpy as np
 from Const import Const
-from copy import copy
 
 from functools import lru_cache
 
@@ -93,9 +92,9 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
                 break
         dspawn_j = None
         if p_spawn > 0:
-            dspawn_j = copy(dhat_j)
+            dspawn_j = dhat_j[:]
             dspawn_j[m_min] = s
-            hspawn_j = copy(hhat_j)
+            hspawn_j = hhat_j[:]
 
         # Each input will push to a seperate index in coo_*
         # Important note: Duplicate entries will be SUMMED!
@@ -211,9 +210,9 @@ def compute_transition_probabilities(C:Const) -> np.array:
         dspawn_j = None
         hspawn_j = None
         if p_spawn > 0:
-            dspawn_j = copy(dhat_j)
+            dspawn_j = dhat_j[:]
             dspawn_j[m_min] = s
-            hspawn_j = copy(hhat_j)
+            hspawn_j = hhat_j[:]
 
         U = [ # input_index, u_k, p_flap, W_v
             [0, C.U_no_flap, 1, [0]],
