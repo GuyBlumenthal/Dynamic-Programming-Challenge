@@ -21,7 +21,7 @@ from scipy.optimize import linprog
 from scipy.sparse import csc_matrix, vstack, eye
 from Const import Const
 
-from ComputeExpectedStageCosts import compute_expected_stage_cost
+from ComputeExpectedStageCosts import compute_expected_stage_cost_solver as compute_expected_stage_cost
 from ComputeTransitionProbabilities import compute_transition_probabilities_sparse as compute_transition_probabilities
 
 from timer import time_def

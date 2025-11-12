@@ -6,21 +6,6 @@ timings = []
 
 
 def time_def(func: Callable = None) -> Callable:
-    """
-    This function is a decorator
-    It will run the function the decorator is applied to, and return its result
-    Printing the execution time
-
-    eg.
-
-    @time_it
-    def time_max(A):
-        return max(A)
-
-    time_max([1,2,3,4,6]) # will return max value and print execution time
-
-    """
-
     @wraps(func)
     def wrapper(*args, **kwargs):
         # storing time before function execution
