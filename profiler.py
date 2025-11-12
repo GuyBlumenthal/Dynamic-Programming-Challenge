@@ -21,3 +21,10 @@ print(run_times)
 
 print("Mean: ", np.mean(run_times))
 print("Var: ", np.var(run_times))
+
+
+from datetime import datetime
+import git
+
+with open("profiler.txt", "a") as log:
+    log.write(f"@{git.Repo().head.object.hexsha[:6]}{'~D' if git.Repo().is_dirty() else '  '} \t[{datetime.now().strftime('%d/%m/%Y, %H:%M:%S')}] M({np.mean(run_times):.8f}) V({np.var(run_times):.8f})\n")
