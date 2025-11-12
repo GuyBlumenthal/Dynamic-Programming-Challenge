@@ -52,7 +52,7 @@ t = timeit.Timer(stmt=stmt, setup=setup)
 
 
 if __name__ == "__main__":
-    iters = 100
+    iters = 500
     dur = t.timeit(number=iters) / iters
     print(dur)
 
@@ -60,5 +60,5 @@ if __name__ == "__main__":
     from datetime import datetime
 
     with open("profiler.txt", "a") as log:
-        log.write(f"@{git.Repo().head.object.hexsha[:6]}{'~D' if git.Repo().is_dirty() else '  '} \t[{datetime.now().strftime('%d/%m/%Y, %H:%M:%S')}] M({dur:.8f})\n")
+        log.write(f"@{git.Repo().head.object.hexsha[:6]}{'~D' if git.Repo().is_dirty() else '  '} \t[{datetime.now().strftime('%d/%m/%Y, %H:%M:%S')}] M({dur:.8f}), {iters}\n")
 

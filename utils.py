@@ -135,37 +135,37 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
     h_options_default = [S_h_default]
 
     # ================== H-Vector Recursive Builder ==================
-    def _build_h_recursive(y, v, d_tuple, current_h_list, h_index):
-        """
-        Recursively builds the H-vector (h1, ..., hM) for a given
-        (y, v, d_tuple) prefix.
+    # def _build_h_recursive(y, v, d_tuple, current_h_list, h_index):
+    #     """
+    #     Recursively builds the H-vector (h1, ..., hM) for a given
+    #     (y, v, d_tuple) prefix.
 
-        Pruning:
-        - If d_i = 0 (for i>=2), only the default h_i is allowed.
-        """
-        nonlocal current_index
+    #     Pruning:
+    #     - If d_i = 0 (for i>=2), only the default h_i is allowed.
+    #     """
+    #     nonlocal current_index
 
-        # --- Base Case: H-vector is complete ---
-        if h_index == M:
-            state = (y, v, *d_tuple, *current_h_list)
-            state_to_index_dict[state] = current_index
-            current_index += 1
-            return
+    #     # --- Base Case: H-vector is complete ---
+    #     if h_index == M:
+    #         state = (y, v, *d_tuple, *current_h_list)
+    #         state_to_index_dict[state] = current_index
+    #         current_index += 1
+    #         return
 
-        # --- Recursive Step: Add h_i ---
+    #     # --- Recursive Step: Add h_i ---
 
-        # Pruning check: if i>=2 (h_index > 0) and d_i = 0...
-        if h_index > 0 and d_tuple[h_index] == 0:
-            # ...then h_i *must* be the default value. Prune all other options.
-            current_h_list.append(S_h_default)
-            _build_h_recursive(y, v, d_tuple, current_h_list, h_index + 1)
-            current_h_list.pop() # Backtrack
-        else:
-            # d_i > 0 or i=1 (h1). All h_options are valid.
-            for h in S_h:
-                current_h_list.append(h)
-                _build_h_recursive(y, v, d_tuple, current_h_list, h_index + 1)
-                current_h_list.pop() # Backtrack
+    #     # Pruning check: if i>=2 (h_index > 0) and d_i = 0...
+    #     if h_index > 0 and d_tuple[h_index] == 0:
+    #         # ...then h_i *must* be the default value. Prune all other options.
+    #         current_h_list.append(S_h_default)
+    #         _build_h_recursive(y, v, d_tuple, current_h_list, h_index + 1)
+    #         current_h_list.pop() # Backtrack
+    #     else:
+    #         # d_i > 0 or i=1 (h1). All h_options are valid.
+    #         for h in S_h:
+    #             current_h_list.append(h)
+    #             _build_h_recursive(y, v, d_tuple, current_h_list, h_index + 1)
+    #             current_h_list.pop() # Backtrack
 
     # ================== D-Vector Recursive Builder ==================
     def _build_d_recursive(y, v, current_d_list, current_d_sum, d_index, zero_seen):
@@ -181,31 +181,31 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
         # --- Base Case: D-vector is complete ---
         if d_index == M:
             # D-vector is built, now start building the H-vector
-            _build_h_recursive(y, v, tuple(current_d_list), [], 0)
-            return
+            # _build_h_recursive(y, v, tuple(current_d_list), [], 0)
+            # return
 
-            # nonlocal current_index
+            nonlocal current_index
 
-            # d_tuple = tuple(current_d_list)
+            d_tuple = tuple(current_d_list)
 
-            # # --- Your H-vector logic starts here ---
-            # # 1. Build the list of allowed H-options for this d_tuple
-            # h_iterables = [h_options_all] # h1 always has all options
+            # --- Your H-vector logic starts here ---
+            # 1. Build the list of allowed H-options for this d_tuple
+            h_iterables = [h_options_all] # h1 always has all options
 
-            # for i in range(1, M): # For d2...dM
-            #     if d_tuple[i] == 0:
-            #         h_iterables.append(h_options_default)
-            #     else:
-            #         h_iterables.append(h_options_all)
+            for i in range(1, M): # For d2...dM
+                if d_tuple[i] == 0:
+                    h_iterables.append(h_options_default)
+                else:
+                    h_iterables.append(h_options_all)
 
-            # # 2. Loop over the product of these allowed H-options
-            # for h_tuple in product(*h_iterables):
-            #     state = (y, v, *d_tuple, *h_tuple)
-            #     state_to_index_dict[state] = current_index
-            #     current_index += 1
-            # # --- Your H-vector logic ends here ---
+            # 2. Loop over the product of these allowed H-options
+            for h_tuple in product(*h_iterables):
+                state = (y, v, *d_tuple, *h_tuple)
+                state_to_index_dict[state] = current_index
+                current_index += 1
+            # --- Your H-vector logic ends here ---
 
-            # return # End this recursive branch
+            return # End this recursive branch
 
         # --- Recursive Step: Add d_i ---
         if d_index == 0:
