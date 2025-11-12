@@ -24,7 +24,7 @@ from functools import lru_cache
 # TODO: Try different versions (csc, csr, bsr, coo)
 from scipy.sparse import csc_matrix as sparse_matrix
 
-def compute_transition_probabilities_sparse(C:Const) -> list:
+def compute_transition_probabilities_sparse(C:Const, state_dict, K) -> list:
     """Computes the transition probability matrix P as a list of sparse matrices."""
 
     # Each action in C.input_space will have its own sparse probability matrix
@@ -55,7 +55,8 @@ def compute_transition_probabilities_sparse(C:Const) -> list:
 
     # Cache states
     # TODO: Can we maybe only do this a little bit
-    state_to_index_dict = {state: i for i, state in enumerate(C.state_space)}
+    # state_to_index_dict = {state: i for i, state in enumerate(C.state_space)}
+    state_to_index_dict = state_dict
 
     # Store variables once instead of recalculating
     Y_limit = C.Y - 1
@@ -68,7 +69,7 @@ def compute_transition_probabilities_sparse(C:Const) -> list:
     U_strong_prob = 1 / (2 * C.V_dev + 1)
     W_v = C.W_v
 
-    for state_i in C.state_space:
+    for state_i in state_to_index_dict:
         state_index = state_to_index_dict[state_i]
         y_j = min(Y_limit, max(0, state_i[StateVar.Y] + state_i[StateVar.V]))
         if state_i[StateVar.D_1] == 0:
@@ -133,7 +134,7 @@ def compute_transition_probabilities_sparse(C:Const) -> list:
     for l in range(C.L):
         P_l = sparse_matrix(
             (coo_data[l], (coo_rows[l], coo_cols[l])),
-            shape=(C.K, C.K)
+            shape=(K, K)
         )
         P_sparse_list.append(P_l)
 

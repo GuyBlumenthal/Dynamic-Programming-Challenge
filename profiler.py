@@ -6,7 +6,7 @@ import numpy as np
 
 run_times = []
 
-iterations = 200
+iterations = 100
 
 for i in range(iterations):
     time_reset()

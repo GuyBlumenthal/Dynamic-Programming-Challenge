@@ -21,6 +21,8 @@ from scipy.optimize import linprog
 from scipy.sparse import csc_matrix, vstack, eye
 from Const import Const
 
+from utils import custom_state_space
+
 from ComputeExpectedStageCosts import compute_expected_stage_cost_solver as compute_expected_stage_cost
 from ComputeExpectedStageCosts import compute_expected_stage_cost as compute_expected_stage_cost_old
 from ComputeTransitionProbabilities import compute_transition_probabilities_sparse as compute_transition_probabilities
@@ -123,16 +125,18 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
         np.array: The optimal control policy for the stochastic SPP,
             of shape (C.K,), where each entry is in {0,...,C.L-1}.
     """
-    J_opt = np.zeros(C.K)
-    u_opt = np.zeros(C.K)
+    K, state_dict = custom_state_space(C)
 
-    P = compute_transition_probabilities(C)
-    Q, b = compute_expected_stage_cost(C)
+    J_opt = np.zeros(K)
+    u_opt = np.zeros(K)
 
-    c = np.full(C.K, -1, np.int64)
+    P = compute_transition_probabilities(C, state_dict, K)
+    Q, b = compute_expected_stage_cost(C, K)
+
+    c = np.full(K, -1, np.int64)
 
     # 1. Create a sparse identity matrix
-    I_sparse = eye(C.K, format='csc')
+    I_sparse = eye(K, format='csc')
 
     # 2. Create a list to hold the sparse blocks (I - P_l)
     A_blocks = []
@@ -170,8 +174,8 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
 def solution_value_iteration(C: Const, epsilon=1e-5, max_iter=10000) -> tuple[np.array, np.array]:
     """Computes the optimal cost and policy using Value Iteration."""
 
-    P = compute_transition_probabilities(C)
-    Q = compute_expected_stage_cost(C)
+    P = compute_transition_probabilities(C, {state: i for i, state in enumerate(C.state_space)}, C.K)
+    Q = compute_expected_stage_cost_old(C)
 
     # 1. Initialize J (Value function)
     J = np.zeros(C.K)
@@ -188,15 +192,11 @@ def solution_value_iteration(C: Const, epsilon=1e-5, max_iter=10000) -> tuple[np
         weighted_J_all = np.stack(weighted_J_cols, axis=1)
         expected_values = Q + weighted_J_all
 
-        # J_k+1 = min_u [ Q(s,u) + P(s'|s,u) @ J_k(s') ]
         J = np.min(expected_values, axis=1)
 
         # 3. Check for convergence
         if np.max(np.abs(J - J_old)) < epsilon:
-            print(f"Value Iteration converged in {i+1} iterations.")
             break
-    else:
-        print(f"Value Iteration hit max iterations ({max_iter}).")
 
     # 4. Recover the optimal policy (u_opt)
     # We just re-use the final `expected_values` from the last iteration
@@ -205,6 +205,7 @@ def solution_value_iteration(C: Const, epsilon=1e-5, max_iter=10000) -> tuple[np
 
     return J, u_opt
 
-solution = time_def(solution_linear_prog_sparse)
+solution = solution_linear_prog_sparse
+# solution = solution_value_iteration
 
 

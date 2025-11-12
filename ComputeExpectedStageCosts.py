@@ -22,7 +22,7 @@ from timer import time_def
 
 from typing import Tuple
 
-def compute_expected_stage_cost_solver(C: Const) -> Tuple[np.array, np.array]:
+def compute_expected_stage_cost_solver(C: Const, K: int) -> Tuple[np.array, np.array]:
     costs_row = np.array([
         -1,                # Cost for action 0 (None)
         C.lam_weak - 1,    # Cost for action 1 (Weak)
@@ -30,12 +30,12 @@ def compute_expected_stage_cost_solver(C: Const) -> Tuple[np.array, np.array]:
     ])
 
     b = np.concatenate((
-        np.repeat(costs_row[0], C.K),  # Column 0 of Q
-        np.repeat(costs_row[1], C.K),  # Column 1 of Q
-        np.repeat(costs_row[2], C.K)   # Column 2 of Q
+        np.repeat(costs_row[0], K),  # Column 0 of Q
+        np.repeat(costs_row[1], K),  # Column 1 of Q
+        np.repeat(costs_row[2], K)   # Column 2 of Q
     ))
 
-    Q = b.reshape((C.K, C.L), order='F')
+    Q = b.reshape((K, C.L), order='F')
 
     return Q, b
 
