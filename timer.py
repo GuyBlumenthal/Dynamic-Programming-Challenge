@@ -33,3 +33,10 @@ def time_evaluate():
 
     with open("log.txt", "a") as log:
         log.write(f"@{git.Repo().head.object.hexsha[:6]}{'~D' if git.Repo().is_dirty() else '  '} \t[{datetime.now().strftime('%d/%m/%Y, %H:%M:%S')}] {total}\n")
+
+def time_return():
+    return sum([t[1] for t in timings])
+
+def time_reset():
+    global timings
+    timings = list()

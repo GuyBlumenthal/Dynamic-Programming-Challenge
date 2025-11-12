@@ -21,8 +21,6 @@ from copy import copy
 
 from functools import lru_cache
 
-from timer import time_def
-
 # TODO: Try different versions (csc, csr, bsr, coo)
 from scipy.sparse import csc_matrix as sparse_matrix
 
@@ -141,7 +139,6 @@ def compute_transition_probabilities_sparse(C:Const) -> list:
 
     return P_sparse_list
 
-@time_def
 def compute_transition_probabilities(C:Const) -> np.array:
     """Computes the transition probability matrix P.
 

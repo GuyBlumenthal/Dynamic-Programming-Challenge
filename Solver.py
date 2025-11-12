@@ -126,7 +126,7 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
     u_opt = np.zeros(C.K)
 
     P = compute_transition_probabilities(C)
-    Q = compute_expected_stage_cost(C)
+    Q, b = compute_expected_stage_cost(C)
 
     c = -1 * np.ones(C.K)
 
@@ -144,10 +144,7 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
     # 4. Stack all blocks vertically into one sparse matrix
     A = vstack(A_blocks, format='csc')
 
-    b = Q.flatten(order='F')
-
     # 'highs' is the best for sparse problems
-    # TODO: Test manually specifiying between the two 'highs-ds' and 'highs-ipm'
     res = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0], method='highs')
 
     J_opt = res.x
