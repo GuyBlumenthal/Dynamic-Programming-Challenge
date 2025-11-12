@@ -69,8 +69,7 @@ def compute_transition_probabilities_sparse(C:Const, state_dict, K) -> list:
     U_strong_prob = 1 / (2 * C.V_dev + 1)
     W_v = C.W_v
 
-    for state_i in state_to_index_dict:
-        state_index = state_to_index_dict[state_i]
+    for state_i, state_index in state_to_index_dict.items():
         y_j = min(Y_limit, max(0, state_i[StateVar.Y] + state_i[StateVar.V]))
         if state_i[StateVar.D_1] == 0:
             if abs(state_i[StateVar.Y] - state_i[StateVar.H_1]) > G_limit:
