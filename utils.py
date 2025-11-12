@@ -77,6 +77,10 @@ def is_collision(C: Const, y: int, d1: int, h1: int) -> bool:
     """
     return (d1 == 0) and not is_in_gap(C, y, h1)
 
+
+from line_profiler import profile
+
+@profile
 def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
     """
     Computes the state space and returns a state -> index dictionary
@@ -105,6 +109,7 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
     S_d0 = [0]
 
     # ================== D-Vector Recursive Builder ==================
+    @profile
     def _build_d_recursive(y, v, current_d_list, current_d_sum, d_index, zero_seen):
         """
         Recursively builds the D-vector (d1, ..., dM) for a given

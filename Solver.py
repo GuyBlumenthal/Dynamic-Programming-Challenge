@@ -29,6 +29,8 @@ from ComputeTransitionProbabilities import compute_transition_probabilities_spar
 
 from timer import time_def
 
+from line_profiler import profile
+
 def solution_template(C: Const) -> tuple[np.array, np.array]:
     """Computes the optimal cost and the optimal control policy.
 
@@ -208,4 +210,4 @@ def solution_value_iteration(C: Const, epsilon=1e-5, max_iter=10000) -> tuple[np
 solution = solution_linear_prog_sparse
 # solution = solution_value_iteration
 
-
+solution = time_def(profile(solution))

@@ -22,6 +22,9 @@ from timer import time_def
 
 from typing import Tuple
 
+from line_profiler import profile
+
+@profile
 def compute_expected_stage_cost_solver(C: Const, K: int) -> Tuple[np.array, np.array]:
     costs_row = np.array([
         -1,                # Cost for action 0 (None)

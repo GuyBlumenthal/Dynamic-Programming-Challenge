@@ -1,7 +1,7 @@
 import time
 from functools import wraps, partial
 from typing import Callable
-
+import numpy as np
 timings = []
 
 
@@ -23,7 +23,10 @@ def time_def(func: Callable = None) -> Callable:
 
 def time_evaluate():
     total = f"{sum([t[1] for t in timings]):.8f}"
+    mean = f"{np.mean([t[1] for t in timings]):.8f}"
+
     print(f"Total TIME {total}")
+    print(f"Averg TIME {mean}")
 
     for timing in timings:
         print(f"\tDEF {timing[0]} : TIME {timing[1]:.8f}")

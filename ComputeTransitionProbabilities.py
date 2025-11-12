@@ -24,7 +24,10 @@ from functools import lru_cache
 # TODO: Try different versions (csc, csr, bsr, coo)
 from scipy.sparse import csc_matrix as sparse_matrix
 
-def compute_transition_probabilities_sparse(C:Const, state_dict, K) -> list:
+from line_profiler import profile
+
+@profile
+def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> list:
     """Computes the transition probability matrix P as a list of sparse matrices."""
 
     # Each action in C.input_space will have its own sparse probability matrix
@@ -43,21 +46,6 @@ def compute_transition_probabilities_sparse(C:Const, state_dict, K) -> list:
     append_rows = [l.append for l in coo_rows]
     append_cols = [l.append for l in coo_cols]
 
-    class StateVar:
-        Y = 0
-        V = 1
-        D_1 = 2
-        D_2 = D_1 + 1
-        D_M = D_1 + C.M - 1
-        H_1 = D_M + 1
-        H_2 = H_1 + 1
-        H_M = H_1 + C.M - 1
-
-    # Cache states
-    # TODO: Can we maybe only do this a little bit
-    # state_to_index_dict = {state: i for i, state in enumerate(C.state_space)}
-    state_to_index_dict = state_dict
-
     # Store variables once instead of recalculating
     Y_limit = C.Y - 1
     G_limit = (C.G - 1) / 2
@@ -69,16 +57,31 @@ def compute_transition_probabilities_sparse(C:Const, state_dict, K) -> list:
     U_strong_prob = 1 / (2 * C.V_dev + 1)
     W_v = C.W_v
 
+    StateVar_Y = 0
+    StateVar_V = 1
+    StateVar_D_1 = 2
+    StateVar_D_2 = StateVar_D_1 + 1
+    StateVar_D_M = StateVar_D_1 + M - 1
+    StateVar_H_1 = StateVar_D_M + 1
+    StateVar_H_2 = StateVar_H_1 + 1
+    StateVar_H_M = StateVar_H_1 + M - 1
+
+    U = [
+        [0, C.U_no_flap, 1, [0]],
+        [1, C.U_weak, 1, [0]],
+        [2, C.U_strong, U_strong_prob, W_v]
+    ]
+
     for state_i, state_index in state_to_index_dict.items():
-        y_j = min(Y_limit, max(0, state_i[StateVar.Y] + state_i[StateVar.V]))
-        if state_i[StateVar.D_1] == 0:
-            if abs(state_i[StateVar.Y] - state_i[StateVar.H_1]) > G_limit:
+        y_j = min(Y_limit, max(0, state_i[StateVar_Y] + state_i[StateVar_V]))
+        if state_i[StateVar_D_1] == 0:
+            if abs(state_i[StateVar_Y] - state_i[StateVar_H_1]) > G_limit:
                 continue
-            dhat_j = [state_i[StateVar.D_2] - 1, *state_i[StateVar.D_2:StateVar.D_M], 0]
-            hhat_j = [*state_i[StateVar.H_2:StateVar.H_M + 1], S_h_0]
+            dhat_j = [state_i[StateVar_D_2] - 1, *state_i[StateVar_D_2:StateVar_D_M], 0]
+            hhat_j = [*state_i[StateVar_H_2:StateVar_H_M + 1], S_h_0]
         else:
-            dhat_j = [state_i[StateVar.D_1] - 1, *state_i[StateVar.D_2:StateVar.D_M + 1]]
-            hhat_j = [*state_i[StateVar.H_1:StateVar.H_M + 1]]
+            dhat_j = [state_i[StateVar_D_1] - 1, *state_i[StateVar_D_2:StateVar_D_M + 1]]
+            hhat_j = [*state_i[StateVar_H_1:StateVar_H_M + 1]]
         s = X - 1 - sum(dhat_j)
         p_spawn = (s - (D_min - 1)) / (X - D_min)
         p_spawn = min(1, max(0, p_spawn))
@@ -94,18 +97,12 @@ def compute_transition_probabilities_sparse(C:Const, state_dict, K) -> list:
             dspawn_j[m_min] = s
             hspawn_j = copy(hhat_j)
 
-        U = [
-            [0, C.U_no_flap, 1, [0]],
-            [1, C.U_weak, 1, [0]],
-            [2, C.U_strong, U_strong_prob, W_v]
-        ]
-
         # Each input will push to a seperate index in coo_*
         # Important note: Duplicate entries will be SUMMED!
         # This means that we do not have to worry about two inputs resulting in the same next_state (See += in compute_transition_probabilities)
         for input_index, u_k, p_flap, W_v_list in U:
             for w_v in W_v_list:
-                v_j = min(V_max, max(-V_max, state_i[StateVar.V] + u_k + w_v - g))
+                v_j = min(V_max, max(-V_max, state_i[StateVar_V] + u_k + w_v - g))
 
                 # Case 1: No spawn
                 if p_no_spawn > 0:
