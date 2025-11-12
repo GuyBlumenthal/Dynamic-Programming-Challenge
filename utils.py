@@ -125,20 +125,18 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
             # D-vector is built, now start building the H-vector
             nonlocal current_index
 
-            d_tuple = tuple(current_d_list)
-
             # 1. Build the list of allowed H-options for this d_tuple
-            h_iterables = [h_options_all] # h1 always has all options
+            # h1 always has all options
+            h_iterables = [h_options_all] + [
+                h_options_default if current_d_list[i] == 0 else h_options_all
+                for i in range(1, M)
+            ]
 
-            for i in range(1, M): # For d2...dM
-                if d_tuple[i] == 0:
-                    h_iterables.append(h_options_default)
-                else:
-                    h_iterables.append(h_options_all)
+            prefix = (y, v) + tuple(current_d_list)
 
             # 2. Loop over the product of these allowed H-options
             for h_tuple in product(*h_iterables):
-                state = (y, v, *d_tuple, *h_tuple)
+                state = prefix + h_tuple
                 state_to_index_dict[state] = current_index
                 current_index += 1
 

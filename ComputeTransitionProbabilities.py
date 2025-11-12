@@ -21,7 +21,7 @@ from Const import Const
 from functools import lru_cache
 
 # TODO: Try different versions (csc, csr, bsr, coo)
-from scipy.sparse import csc_matrix as sparse_matrix
+from scipy.sparse import csc_matrix, coo_matrix
 
 from line_profiler import profile
 
@@ -94,7 +94,11 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
         if p_spawn > 0:
             dspawn_j = dhat_j[:]
             dspawn_j[m_min] = s
+            dspawn_j = tuple(dspawn_j)
             hspawn_j = hhat_j[:]
+
+        dhat_tuple = tuple(dhat_j)
+        hhat_tuple = tuple(hhat_j)
 
         # Each input will push to a seperate index in coo_*
         # Important note: Duplicate entries will be SUMMED!
@@ -105,7 +109,7 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
 
                 # Case 1: No spawn
                 if p_no_spawn > 0:
-                    next_state = (y_j, v_j, *dhat_j, *hhat_j)
+                    next_state = (y_j, v_j) + dhat_tuple + hhat_tuple
                     j_index = state_to_index_dict[next_state]
 
                     append_data[input_index](p_flap * p_no_spawn)
@@ -114,10 +118,11 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
 
                 # Case 2: Spawn
                 if p_spawn > 0:
+                    spawn_prefix = (y_j, v_j) + dspawn_j
                     p_combined = p_flap * p_spawn * p_height
                     for height in S_h:
                         hspawn_j[m_min] = height
-                        next_state = (y_j, v_j, *dspawn_j, *hspawn_j)
+                        next_state = spawn_prefix + tuple(hspawn_j)
                         j_index = state_to_index_dict[next_state]
 
                         append_data[input_index](p_combined)
@@ -127,10 +132,13 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
     # Construct the sparse matrices
     P_sparse_list = []
     for l in range(C.L):
-        P_l = sparse_matrix(
+        # Build as COO first (fastest for this input)
+        P_l_coo = coo_matrix(
             (coo_data[l], (coo_rows[l], coo_cols[l])),
             shape=(K, K)
         )
+        # Convert to CSC (fast, sums duplicates)
+        P_l = P_l_coo.tocsc()
         P_sparse_list.append(P_l)
 
     return P_sparse_list
