@@ -23,7 +23,7 @@ from functools import lru_cache
 # TODO: Try different versions (csc, csr, bsr, coo)
 from scipy.sparse import csc_matrix, coo_matrix
 
-from line_profiler import profile
+from timer import profile
 
 @profile
 def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> list:

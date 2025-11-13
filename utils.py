@@ -23,6 +23,8 @@ from typing import Tuple, Dict
 
 from itertools import product
 
+from timer import profile
+
 def spawn_probability(C: Const, s: int) -> float:
     """Distance-dependent spawn probability p_spawn(s).
 
@@ -77,10 +79,6 @@ def is_collision(C: Const, y: int, d1: int, h1: int) -> bool:
     """
     return (d1 == 0) and not is_in_gap(C, y, h1)
 
-
-from line_profiler import profile
-
-@profile
 def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
     """
     Computes the state space and returns a state -> index dictionary

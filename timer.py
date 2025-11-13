@@ -5,6 +5,11 @@ import numpy as np
 timings = []
 
 
+import line_profiler
+def profile(A):
+    # return line_profiler.profile(A)
+    return A
+
 def time_def(func: Callable = None) -> Callable:
     @wraps(func)
     def wrapper(*args, **kwargs):

@@ -160,6 +160,5 @@ def multi_core_main():
     with open("profiler.txt", "a") as log:
         log.write(f"@{git.Repo().head.object.hexsha[:6]}{'~D' if git.Repo().is_dirty() else '  '} \t[{datetime.now().strftime('%d/%m/%Y, %H:%M:%S')}] M({dur:.8f}), {iters}\n")
 
-
 if __name__ == "__main__":
     one_core_main(iters=100)

@@ -18,11 +18,9 @@ Institute for Dynamic Systems and Control
 import numpy as np
 from Const import Const
 
-from timer import time_def
+from timer import time_def, profile
 
 from typing import Tuple
-
-from line_profiler import profile
 
 @profile
 def compute_expected_stage_cost_solver(C: Const, K: int) -> Tuple[np.array, np.array]:

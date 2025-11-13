@@ -27,9 +27,7 @@ from ComputeExpectedStageCosts import compute_expected_stage_cost_solver as comp
 from ComputeExpectedStageCosts import compute_expected_stage_cost as compute_expected_stage_cost_old
 from ComputeTransitionProbabilities import compute_transition_probabilities_sparse as compute_transition_probabilities
 
-from timer import time_def
-
-from line_profiler import profile
+from timer import time_def, profile
 
 def solution_template(C: Const) -> tuple[np.array, np.array]:
     """Computes the optimal cost and the optimal control policy.
@@ -244,4 +242,4 @@ def solution_value_iteration(C: Const, epsilon=1e-8, max_iter=10000) -> tuple[np
 solution = solution_linear_prog_sparse
 # solution = solution_value_iteration
 
-solution = time_def(profile(solution))
+# solution = time_def(profile(solution))
