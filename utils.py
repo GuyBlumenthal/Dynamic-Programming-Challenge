@@ -108,9 +108,18 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
     # Pre build an empty D-options list
     S_d0 = [0]
 
+
+    possible_h_iterables = [[h_options_all] + [h_options_all for i in range(1, M)]]
+    for spot0 in range(1, M):
+        possible_h_iterables.append([h_options_all] + [
+            h_options_default if i >= spot0 else h_options_all
+            for i in range(1, M)
+        ])
+    possible_h_iterables = [list(product(*h_iter)) for h_iter in possible_h_iterables]
+
     # ================== D-Vector Recursive Builder ==================
     @profile
-    def _build_d_recursive(y, v, current_d_list, current_d_sum, d_index, zero_seen):
+    def _build_d_recursive(y, v, current_d_list, current_d_sum, d_index, spot0):
         """
         Recursively builds the D-vector (d1, ..., dM) for a given
         (y, v) prefix.
@@ -125,17 +134,12 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
             # D-vector is built, now start building the H-vector
             nonlocal current_index
 
-            # 1. Build the list of allowed H-options for this d_tuple
-            # h1 always has all options
-            h_iterables = [h_options_all] + [
-                h_options_default if current_d_list[i] == 0 else h_options_all
-                for i in range(1, M)
-            ]
+            h_iterable = possible_h_iterables[spot0]
 
             prefix = (y, v) + tuple(current_d_list)
 
             # 2. Loop over the product of these allowed H-options
-            for h_tuple in product(*h_iterables):
+            for h_tuple in h_iterable:
                 state = prefix + h_tuple
                 state_to_index_dict[state] = current_index
                 current_index += 1
@@ -145,7 +149,7 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
         # --- Recursive Step: Add d_i ---
         if d_index == 0:
             d_options = S_d1
-        elif zero_seen:
+        elif spot0 > 0:
             d_options = S_d0
         else:
             d_options = S_d
@@ -163,6 +167,10 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
                 if d1 <= 0 and d2 == 0:
                     continue
 
+            next_spot0 = spot0
+            if spot0 == 0 and d_index > 0 and d == 0:
+                next_spot0 = d_index  # This is the first zero
+
             # Recurse with the added d
             current_d_list[d_index] = d
             _build_d_recursive(
@@ -173,7 +181,7 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
                 # Update zero_seen flag:
                 # (zero_seen is True if it was already True, OR
                 # if we are adding a zero *after* d1)
-                zero_seen or (d_index > 0 and d == 0)
+                next_spot0
             )
 
     # The outer loops *must* be y, then v, to maintain order
@@ -181,6 +189,6 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
         for v in S_v:
             current_d_list_for_v = [0] * M
             # Start the recursion for the D-vector
-            _build_d_recursive(y, v, current_d_list_for_v, 0, 0, False)
+            _build_d_recursive(y, v, current_d_list_for_v, 0, 0, 0)
 
     return len(state_to_index_dict), state_to_index_dict

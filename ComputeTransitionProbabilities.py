@@ -71,19 +71,38 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
         [2, C.U_strong, U_strong_prob, W_v]
     ]
 
+    # Cache all possible Vs
+    v_space = C.S_v
+    u_space = C.input_space
+
+    max_v = V_max + max(C.input_space) + max(W_v) - g
+    min_v = -V_max + min(C.input_space) + min(W_v) - g
+
+    Y_LOOKUP_OFFSET = abs(0-V_max)
+    Y_LOOKUP = [min(Y_limit, max(0, y_v)) for y_v in range(0-V_max, Y_limit+V_max+1)]
+
+    V_LOOKUP_OFFSET = abs(min_v)
+    V_LOOKUP = [min(V_max, max(-V_max, v)) for v in range(min_v, max_v+1)]
+
     for state_i, state_index in state_to_index_dict.items():
-        y_j = min(Y_limit, max(0, state_i[StateVar_Y] + state_i[StateVar_V]))
+        # y_j = min(Y_limit, max(0, state_i[StateVar_Y] + state_i[StateVar_V]))
+        y_j = Y_LOOKUP[Y_LOOKUP_OFFSET + state_i[StateVar_Y] + state_i[StateVar_V]]
         if state_i[StateVar_D_1] == 0:
             if abs(state_i[StateVar_Y] - state_i[StateVar_H_1]) > G_limit:
                 continue
-            dhat_j = [state_i[StateVar_D_2] - 1, *state_i[StateVar_D_2:StateVar_D_M], 0]
+            dhat_j = [state_i[StateVar_D_2] - 1, *state_i[StateVar_D_2+1:StateVar_D_M+1], 0]
             hhat_j = [*state_i[StateVar_H_2:StateVar_H_M + 1], S_h_0]
         else:
             dhat_j = [state_i[StateVar_D_1] - 1, *state_i[StateVar_D_2:StateVar_D_M + 1]]
             hhat_j = [*state_i[StateVar_H_1:StateVar_H_M + 1]]
         s = X - 1 - sum(dhat_j)
         p_spawn = (s - (D_min - 1)) / (X - D_min)
-        p_spawn = min(1, max(0, p_spawn))
+        # TODO: Can p_spawn ever be 1 or greater?
+        if p_spawn < 0:
+            p_spawn = 0
+        elif p_spawn > 1:
+            p_spawn = 1
+        # p_spawn = min(1, max(0, p_spawn))
         p_no_spawn = 1 - p_spawn
         m_min = M - 1
         for m in range(1, M):
@@ -96,6 +115,8 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
             dspawn_j[m_min] = s
             dspawn_j = tuple(dspawn_j)
             hspawn_j = hhat_j[:]
+            h_prefix = tuple(hhat_j[:m_min])
+            h_suffix = tuple(hhat_j[m_min+1:])
 
         dhat_tuple = tuple(dhat_j)
         hhat_tuple = tuple(hhat_j)
@@ -105,7 +126,7 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
         # This means that we do not have to worry about two inputs resulting in the same next_state (See += in compute_transition_probabilities)
         for input_index, u_k, p_flap, W_v_list in U:
             for w_v in W_v_list:
-                v_j = min(V_max, max(-V_max, state_i[StateVar_V] + u_k + w_v - g))
+                v_j = V_LOOKUP[V_LOOKUP_OFFSET + state_i[StateVar_V] + u_k + w_v - g]
 
                 # Case 1: No spawn
                 if p_no_spawn > 0:
@@ -121,8 +142,7 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
                     spawn_prefix = (y_j, v_j) + dspawn_j
                     p_combined = p_flap * p_spawn * p_height
                     for height in S_h:
-                        hspawn_j[m_min] = height
-                        next_state = spawn_prefix + tuple(hspawn_j)
+                        next_state = spawn_prefix + h_prefix + (height,) + h_suffix
                         j_index = state_to_index_dict[next_state]
 
                         append_data[input_index](p_combined)

@@ -173,39 +173,73 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
 
     return J_opt, u_opt
 
-def solution_value_iteration(C: Const, epsilon=1e-5, max_iter=10000) -> tuple[np.array, np.array]:
-    """Computes the optimal cost and policy using Value Iteration."""
+@profile
+def solution_value_iteration(C: Const, epsilon=1e-8, max_iter=10000) -> tuple[np.array, np.array]:
+    """Computes the optimal cost and the optimal control policy.
 
-    P = compute_transition_probabilities(C, {state: i for i, state in enumerate(C.state_space)}, C.K)
-    Q = compute_expected_stage_cost_old(C)
+    You can solve the SSP by any method:
+    - Value Iteration
+    - Policy Iteration
+    - Linear Programming
+    - A combination of the above
+    - Others?
 
-    # 1. Initialize J (Value function)
-    J = np.zeros(C.K)
+    Args:
+        C (Const): The constants describing the problem instance.
+
+    Returns:
+        np.array: The optimal cost to go for the stochastic SPP,
+            of shape (C.K,), where C.K is the number of states.
+        np.array: The optimal control policy for the stochastic SPP,
+            of shape (C.K,), where each entry is in {0,...,C.L-1}.
+    """
+
+    # 1. Use the SAME optimized setup as solution_linear_prog_sparse
+    K, state_dict = custom_state_space(C)
+    P = compute_transition_probabilities(C, state_dict, K)
+    Q, _ = compute_expected_stage_cost(C, K)
+
+    # 2. Initialize J (Value function)
+    J = np.zeros(K)
+
+    # Pre-allocate arrays
+    J_current = np.zeros(K)
+    J_next = np.empty(K)
+
+    val_l = np.empty(K)
 
     for i in range(max_iter):
-        J_old = J
+        # 1. Initialize J_next with the value of the first action (l=0)
+        # Q[:, 0] is (K,), P[0] @ J_old is (K,)
+        np.add(Q[:, 0], (P[0] @ J_current), out=J_next)
 
-        # Bellman update
-        weighted_J_cols = []
-        for l in range(C.L):
-            weighted_J_l = P[l] @ J_old
-            weighted_J_cols.append(weighted_J_l)
+        # 2. Loop from the second action (l=1)
+        for l in range(1, C.L):
+            # Calculate the value for this action: Q_l + P_l * J_current
+            np.add(Q[:, l], (P[l] @ J_current), out=val_l)
 
-        weighted_J_all = np.stack(weighted_J_cols, axis=1)
-        expected_values = Q + weighted_J_all
+            # Update J_next to be the element-wise minimum
+            np.minimum(J_next, val_l, out=J_next)
 
-        J = np.min(expected_values, axis=1)
-
-        # 3. Check for convergence
-        if np.max(np.abs(J - J_old)) < epsilon:
+        if np.max(np.abs(J_next - J_current)) < epsilon:
+            J_current = J_next  # Converged. J_next is the final value.
             break
 
+        J_current, J_next = J_next, J_current
+
     # 4. Recover the optimal policy (u_opt)
-    # We just re-use the final `expected_values` from the last iteration
+    expected_values_cols = []
+    for l in range(C.L):
+        # Use the final converged J_opt
+        val_l = Q[:, l] + (P[l] @ J_current)
+        expected_values_cols.append(val_l)
+
+    expected_values = np.stack(expected_values_cols, axis=1)
+
     optimal_indices = np.argmin(expected_values, axis=1)
     u_opt = np.array(C.input_space)[optimal_indices]
 
-    return J, u_opt
+    return J_current, u_opt
 
 solution = solution_linear_prog_sparse
 # solution = solution_value_iteration
