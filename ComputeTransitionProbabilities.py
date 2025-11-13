@@ -85,7 +85,6 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
     V_LOOKUP = [min(V_max, max(-V_max, v)) for v in range(min_v, max_v+1)]
 
     for state_i, state_index in state_to_index_dict.items():
-        # y_j = min(Y_limit, max(0, state_i[StateVar_Y] + state_i[StateVar_V]))
         y_j = Y_LOOKUP[Y_LOOKUP_OFFSET + state_i[StateVar_Y] + state_i[StateVar_V]]
         if state_i[StateVar_D_1] == 0:
             if abs(state_i[StateVar_Y] - state_i[StateVar_H_1]) > G_limit:
