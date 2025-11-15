@@ -73,12 +73,12 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_array, K, va
             if abs(y_i - h_i[0]) > G_limit:
                 continue # Crash!
             dhat_j = (d_i[1] - 1, *d_i[2:], 0)
-            hhat_j = (*h_i[1:], S_h_0) #TODO: Remove expansion
+            hhat_j = (*h_i[1:], S_h_0)
 
             # We need to update m_min!
             m_min = dhat_j[1:].index(0) + 1
         else:
-            dhat_j = (d_i[0] - 1, *d_i[1:]) #TODO: Remove expansion
+            dhat_j = (d_i[0] - 1, *d_i[1:])
             hhat_j = h_i
 
         s = X - 1 - sum(dhat_j)

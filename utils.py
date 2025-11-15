@@ -96,14 +96,16 @@ class CustomStateSpace:
             # D-vector is built, now start building the H-vector
             h_iterable = self.possible_h_iterables[spot0]
 
+            arr = self.state_to_index_array[y, v, *current_d_list, :]
+            final_d_list = tuple(current_d_list)
             # 2. Loop over the product of these allowed H-options
-            prefix = (y, v) + tuple(current_d_list)
             for h_tuple in h_iterable:
-                self.state_to_index_array[*prefix, *h_tuple] = self.current_index
-                self.valid_states_with_indices.append((y, v, current_d_list[:], h_tuple, self.current_index, spot0))
+                arr[*h_tuple] = self.current_index
+                self.valid_states_with_indices.append((y, v, final_d_list, h_tuple, self.current_index, spot0))
                 self.current_index += 1
 
             return        # --- Recursive Step: Add d_i ---
+
         if d_index == 0:
             d_options = self.S_d1
         elif spot0 > 0:
@@ -155,7 +157,7 @@ class CustomStateSpace:
 
         # --- Cache constants from C for minor speedup ---
         self.S_y, self.S_v = C.S_y, C.S_v
-        self.S_d, self.S_d1 = C.S_d, C.S_d1
+        self.S_d, self.S_d1 = sorted(C.S_d), sorted(C.S_d1)
         self.S_h, self.S_h_default = C.S_h, C.S_h[0]
         self.M, self.X_limit = C.M, C.X - 1
 
