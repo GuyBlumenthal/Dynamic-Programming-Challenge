@@ -17,6 +17,7 @@ Institute for Dynamic Systems and Control
 --
 """
 
+import numpy as np
 from Const import Const
 
 from typing import Tuple, Dict
@@ -100,12 +101,14 @@ class CustomStateSpace:
             # 2. Loop over the product of these allowed H-options
             for h_tuple in h_iterable:
                 state = prefix + h_tuple
-                self.state_to_index_dict[state] = self.current_index
+                
+                index_tuple = tuple([y, v + self.v_offset] + list(current_d_list) + list(h_tuple))
+
+                self.state_to_index_array[index_tuple] = self.current_index
+                self.valid_states_with_indices.append((state, self.current_index))
                 self.current_index += 1
 
-            return
-
-        # --- Recursive Step: Add d_i ---
+            return        # --- Recursive Step: Add d_i ---
         if d_index == 0:
             d_options = self.S_d1
         elif spot0 > 0:
@@ -143,7 +146,7 @@ class CustomStateSpace:
                 next_spot0
             )
 
-    def custom_state_space(self, C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
+    def custom_state_space(self, C: Const) -> Tuple[int, np.ndarray, list]:
         """
         Computes the state space and returns a state -> index dictionary
         using a recursive, pruning-based generation method.
@@ -155,14 +158,27 @@ class CustomStateSpace:
         """
 
 
-        self.state_to_index_dict = {}
         self.current_index = 0
+        self.valid_states_with_indices = []
 
         # --- Cache constants from C for minor speedup ---
         self.S_y, self.S_v = C.S_y, C.S_v
         self.S_d, self.S_d1 = C.S_d, C.S_d1
         self.S_h, self.S_h_default = C.S_h, C.S_h[0]
         self.M, self.X_limit = C.M, C.X - 1
+
+        # --- Create mappings for non-contiguous state variables ---
+        self.v_offset = C.V_max
+
+        # --- Initialize state_to_index_array ---
+        dims = [C.Y, 2 * C.V_max + 1]
+        for _ in range(self.M):
+            dims.append(C.X) # d values are 0..X-1
+        for _ in range(self.M):
+            dims.append(C.Y) # h values are 0..Y-1
+        
+        self.state_to_index_array = np.full(dims, -1, dtype=np.int32)
+
 
         # Pre-build the two possible lists for H-options
         self.h_options_all = self.S_h
@@ -186,4 +202,4 @@ class CustomStateSpace:
                 # Start the recursion for the D-vector
                 self.build_d_recursive(y, v, current_d_list_for_v, 0, 0, 0)
 
-        return len(self.state_to_index_dict), self.state_to_index_dict
+        return self.current_index, self.state_to_index_array, self.valid_states_with_indices

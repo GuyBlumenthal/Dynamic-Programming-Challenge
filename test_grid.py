@@ -12,11 +12,15 @@ from tqdm import tqdm
 
 from typing import Generator, Dict, Any
 
+from timeit import Timer
+
 # All imported files for profiling
 from Solver import SOLUTION_FUNCTIONS, solution
 from ComputeExpectedStageCosts import compute_expected_stage_cost_solver
 from ComputeTransitionProbabilities import compute_transition_probabilities_sparse
 from utils import CustomStateSpace
+
+from test import main as challenge_main
 
 TEST_PARAM_RANGES = {
     "x": [6, 12],
@@ -149,19 +153,26 @@ def main():
     for func in profiled_functions:
         lp.add_callable(func)
 
-    # for i, t in enumerate(tests):
-    for test in tqdm(tests, desc="Test Progress"):
-        C = apply_overrides_and_instantiate(test)
+    setup="from test import main as challenge_main"
+    stmt="challenge_main()"
+    t = Timer(stmt=stmt, setup=setup)
+    # dur = t.timeit(number=iters) / iters
 
-        try:
-            wrapper = lp(solution)
-            wrapper(C)
-        except Exception as e:
-            print(f"Failed for constant description of {test}")
+    wrapper = lp(t.timeit)
+    wrapper(1)
+
+
+    # for test in tqdm(tests, desc="Test Progress"):
+    #     C = apply_overrides_and_instantiate(test)
+        # try:
+        #     wrapper = lp(solution)
+        #     wrapper(C)
+        # except Exception as e:
+        #     print(f"Failed for constant description of {test}")
 
 
     with open("tests/profile_output.txt", "w") as f:
-        lp.print_stats(stream=f)
+        lp.print_stats(stream=f,stripzeros=True)
 
     lp.dump_stats("tests/profile_output.pkl")
 

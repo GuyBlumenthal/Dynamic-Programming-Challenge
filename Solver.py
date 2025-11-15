@@ -124,12 +124,12 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
             of shape (C.K,), where each entry is in {0,...,C.L-1}.
     """
     ss = CustomStateSpace()
-    K, state_dict = ss.custom_state_space(C)
+    K, state_array, valid_states = ss.custom_state_space(C)
 
     J_opt = np.zeros(K)
     u_opt = np.zeros(K)
 
-    P = compute_transition_probabilities(C, state_dict, K)
+    P = compute_transition_probabilities(C, state_array, K, valid_states)
     Q, b = compute_expected_stage_cost(C, K)
 
     c = np.full(K, -1, np.int64)
@@ -191,8 +191,8 @@ def solution_value_iteration(C: Const, epsilon=1e-8, max_iter=10000) -> tuple[np
     """
 
     ss = CustomStateSpace()
-    K, state_dict = ss.custom_state_space(C)
-    P = compute_transition_probabilities(C, state_dict, K)
+    K, state_array, valid_states = ss.custom_state_space(C)
+    P = compute_transition_probabilities(C, state_array, K, valid_states)
     Q, _ = compute_expected_stage_cost(C, K)
 
     # 2. Initialize J (Value function)

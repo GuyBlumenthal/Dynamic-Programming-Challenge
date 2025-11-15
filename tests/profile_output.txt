@@ -1,172 +1,173 @@
 Timer unit: 1e-09 s
 
-Total time: 0.0477268 s
+Total time: 0.000213683 s
+Average time: 2.67104e-05 s
 File: /home/gblum/dev/dpc/ComputeExpectedStageCosts.py
 Function: compute_expected_stage_cost_solver at line 23
 
 Line #      Hits         Time  Per Hit   % Time  Line Contents
 ==============================================================
     23                                           def compute_expected_stage_cost_solver(C: Const, K: int) -> Tuple[np.array, np.array]:
-    24      1152    3672879.0   3188.3      7.7      costs_row = np.array([
-    25       576     416589.0    723.2      0.9          -1,                # Cost for action 0 (None)
-    26       576    1182800.0   2053.5      2.5          C.lam_weak - 1,    # Cost for action 1 (Weak)
-    27       576     383265.0    665.4      0.8          C.lam_strong - 1   # Cost for action 2 (Strong)
+    24         8      16549.0   2068.6      7.7      costs_row = np.array([
+    25         4       1591.0    397.8      0.7          -1,                # Cost for action 0 (None)
+    26         4       4670.0   1167.5      2.2          C.lam_weak - 1,    # Cost for action 1 (Weak)
+    27         4       1796.0    449.0      0.8          C.lam_strong - 1   # Cost for action 2 (Strong)
     28                                               ])
     29                                           
-    30      1152   11507941.0   9989.5     24.1      b = np.concatenate((
-    31       576   13498861.0  23435.5     28.3          np.repeat(costs_row[0], K),  # Column 0 of Q
-    32       576    6242574.0  10837.8     13.1          np.repeat(costs_row[1], K),  # Column 1 of Q
-    33       576    5589749.0   9704.4     11.7          np.repeat(costs_row[2], K)   # Column 2 of Q
+    30         8      35737.0   4467.1     16.7      b = np.concatenate((
+    31         4      72577.0  18144.2     34.0          np.repeat(costs_row[0], K),  # Column 0 of Q
+    32         4      28250.0   7062.5     13.2          np.repeat(costs_row[1], K),  # Column 1 of Q
+    33         4      23814.0   5953.5     11.1          np.repeat(costs_row[2], K)   # Column 2 of Q
     34                                               ))
     35                                           
-    36       576    4977572.0   8641.6     10.4      Q = b.reshape((K, C.L), order='F')
+    36         4      27176.0   6794.0     12.7      Q = b.reshape((K, C.L), order='F')
     37                                           
-    38       576     254590.0    442.0      0.5      return Q, b
+    38         4       1523.0    380.8      0.7      return Q, b
 
-Total time: 96.345 s
+Total time: 0.344638 s
+Average time: 0.0430797 s
 File: /home/gblum/dev/dpc/ComputeTransitionProbabilities.py
 Function: compute_transition_probabilities_sparse at line 28
 
 Line #      Hits         Time  Per Hit   % Time  Line Contents
 ==============================================================
-    28                                           def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> list:
+    28                                           def compute_transition_probabilities_sparse(C:Const, state_to_index_array, K, valid_states_with_indices) -> list:
     29                                               """Computes the transition probability matrix P as a list of sparse matrices."""
     30                                           
     31                                               # Each action in C.input_space will have its own sparse probability matrix
-    32       576    4157434.0   7217.8      0.0      num_inputs = len(C.input_space)
+    32         8      48509.0   6063.6      0.0      num_inputs = len(C.input_space)
     33                                           
     34                                               # A calculated probability P[curr_state, next_state, action] is stored as
     35                                               #   coo_data[action] = P[curr_state, next_state, action]
     36                                               #   coo_cols[action] = curr_state
     37                                               #   coo_rows[action] = next_state
-    38       576    4507483.0   7825.5      0.0      coo_data = [[] for input_i in range(num_inputs)]
-    39       576    1754236.0   3045.5      0.0      coo_cols = [[] for input_i in range(num_inputs)]
-    40       576    2109818.0   3662.9      0.0      coo_rows = [[] for input_i in range(num_inputs)]
+    38         8      54166.0   6770.8      0.0      coo_data = [[] for input_i in range(num_inputs)]
+    39         8      20078.0   2509.8      0.0      coo_cols = [[] for input_i in range(num_inputs)]
+    40         8      20430.0   2553.8      0.0      coo_rows = [[] for input_i in range(num_inputs)]
     41                                           
     42                                               # Helper functions for populating coo table
-    43       576    2674541.0   4643.3      0.0      append_data = [l.append for l in coo_data]
-    44       576    2066649.0   3587.9      0.0      append_rows = [l.append for l in coo_rows]
-    45       576    1894697.0   3289.4      0.0      append_cols = [l.append for l in coo_cols]
+    43         8      24686.0   3085.8      0.0      append_data = [l.append for l in coo_data]
+    44         8      17308.0   2163.5      0.0      append_rows = [l.append for l in coo_rows]
+    45         8      18917.0   2364.6      0.0      append_cols = [l.append for l in coo_cols]
     46                                           
     47                                               # Store variables once instead of recalculating
-    48       576     801559.0   1391.6      0.0      Y_limit = C.Y - 1
-    49       576    1188699.0   2063.7      0.0      G_limit = (C.G - 1) / 2
-    50       576    2817441.0   4891.4      0.0      M = C.M
-    51       576     426076.0    739.7      0.0      X, D_min = C.X, C.D_min
-    52       576     580831.0   1008.4      0.0      V_max, g = C.V_max, C.g
-    53       576     630830.0   1095.2      0.0      S_h, S_h_0 = C.S_h, C.S_h[0]
-    54       576     492056.0    854.3      0.0      p_height = 1 / len(S_h)
-    55       576     791342.0   1373.9      0.0      U_strong_prob = 1 / (2 * C.V_dev + 1)
-    56       576    3630333.0   6302.7      0.0      W_v = C.W_v
+    48         8       9045.0   1130.6      0.0      Y_limit = C.Y - 1
+    49         8      13018.0   1627.2      0.0      G_limit = (C.G - 1) / 2
+    50         8      49035.0   6129.4      0.0      M = C.M
+    51         8       3869.0    483.6      0.0      X, D_min = C.X, C.D_min
+    52         8       9531.0   1191.4      0.0      V_max, g = C.V_max, C.g
+    53         8       6974.0    871.8      0.0      S_h, S_h_0 = C.S_h, C.S_h[0]
+    54         8       5257.0    657.1      0.0      p_height = 1 / len(S_h)
+    55         8       8431.0   1053.9      0.0      U_strong_prob = 1 / (2 * C.V_dev + 1)
+    56         8      59437.0   7429.6      0.0      W_v = C.W_v
     57                                           
-    58       576     332489.0    577.2      0.0      StateVar_Y = 0
-    59       576     255301.0    443.2      0.0      StateVar_V = 1
-    60       576     305396.0    530.2      0.0      StateVar_D_1 = 2
-    61       576     360834.0    626.4      0.0      StateVar_D_2 = StateVar_D_1 + 1
-    62       576     427636.0    742.4      0.0      StateVar_D_M = StateVar_D_1 + M - 1
-    63       576     359481.0    624.1      0.0      StateVar_H_1 = StateVar_D_M + 1
-    64       576     317609.0    551.4      0.0      StateVar_H_2 = StateVar_H_1 + 1
-    65       576     418497.0    726.6      0.0      StateVar_H_M = StateVar_H_1 + M - 1
-    66                                           
-    67       576     397918.0    690.8      0.0      U = [
-    68       576     617755.0   1072.5      0.0          [0, C.U_no_flap, 1, [0]],
-    69       576     543148.0    943.0      0.0          [1, C.U_weak, 1, [0]],
-    70       576     570013.0    989.6      0.0          [2, C.U_strong, U_strong_prob, W_v]
-    71                                               ]
-    72                                           
-    73                                               # Cache all possible Vs
-    74       576    1764818.0   3063.9      0.0      v_space = C.S_v
-    75       576     975410.0   1693.4      0.0      u_space = C.input_space
-    76                                           
-    77       576    2983135.0   5179.1      0.0      max_v = V_max + max(C.input_space) + max(W_v) - g
-    78       576    1554638.0   2699.0      0.0      min_v = -V_max + min(C.input_space) + min(W_v) - g
+    58                                               # --- Create mappings for non-contiguous state variables ---
+    59         8       4682.0    585.2      0.0      v_offset = C.V_max
+    60                                           
+    61         8       4894.0    611.8      0.0      StateVar_Y = 0
+    62         8       3824.0    478.0      0.0      StateVar_V = 1
+    63         8       3854.0    481.8      0.0      StateVar_D_1 = 2
+    64         8       4128.0    516.0      0.0      StateVar_D_2 = StateVar_D_1 + 1
+    65         8       4218.0    527.2      0.0      StateVar_D_M = StateVar_D_1 + M - 1
+    66         8       3138.0    392.2      0.0      StateVar_H_1 = StateVar_D_M + 1
+    67         8       3441.0    430.1      0.0      StateVar_H_2 = StateVar_H_1 + 1
+    68         8       3181.0    397.6      0.0      StateVar_H_M = StateVar_H_1 + M - 1
+    69                                           
+    70         8       5384.0    673.0      0.0      U = [
+    71         8       6850.0    856.2      0.0          [0, C.U_no_flap, 1, [0]],
+    72         8       3897.0    487.1      0.0          [1, C.U_weak, 1, [0]],
+    73         8       4398.0    549.8      0.0          [2, C.U_strong, U_strong_prob, W_v]
+    74                                               ]
+    75                                           
+    76                                               # Cache all possible Vs
+    77         8      30729.0   3841.1      0.0      v_space = C.S_v
+    78         8      12091.0   1511.4      0.0      u_space = C.input_space
     79                                           
-    80       576     794806.0   1379.9      0.0      Y_LOOKUP_OFFSET = abs(0-V_max)
-    81       576    7475866.0  12978.9      0.0      Y_LOOKUP = [min(Y_limit, max(0, y_v)) for y_v in range(0-V_max, Y_limit+V_max+1)]
+    80         8      35443.0   4430.4      0.0      max_v = V_max + max(C.input_space) + max(W_v) - g
+    81         8      19618.0   2452.2      0.0      min_v = -V_max + min(C.input_space) + min(W_v) - g
     82                                           
-    83       576     476536.0    827.3      0.0      V_LOOKUP_OFFSET = abs(min_v)
-    84       576    5949573.0  10329.1      0.0      V_LOOKUP = [min(V_max, max(-V_max, v)) for v in range(min_v, max_v+1)]
+    83         8       8720.0   1090.0      0.0      Y_LOOKUP_OFFSET = abs(0-V_max)
+    84         8      89177.0  11147.1      0.0      Y_LOOKUP = [min(Y_limit, max(0, y_v)) for y_v in range(0-V_max, Y_limit+V_max+1)]
     85                                           
-    86   2709216 1203512634.0    444.2      1.2      for state_i, state_index in state_to_index_dict.items():
-    87   2708640 1307651432.0    482.8      1.4          y_j = Y_LOOKUP[Y_LOOKUP_OFFSET + state_i[StateVar_Y] + state_i[StateVar_V]]
-    88   2708640 1024695517.0    378.3      1.1          if state_i[StateVar_D_1] == 0: # Passing
-    89   1144800  651690640.0    569.3      0.7              if abs(state_i[StateVar_Y] - state_i[StateVar_H_1]) > G_limit:
-    90    959520  269850295.0    281.2      0.3                  continue # Crash!
-    91    185280  150252933.0    811.0      0.2              dhat_j = (state_i[StateVar_D_2] - 1, *state_i[StateVar_D_2+1:StateVar_D_M+1], 0)
-    92    185280  110497396.0    596.4      0.1              hhat_j = (*state_i[StateVar_H_2:StateVar_H_M + 1], S_h_0)
-    93                                                   else:
-    94   1563840 1158212453.0    740.6      1.2              dhat_j = (state_i[StateVar_D_1] - 1, *state_i[StateVar_D_2:StateVar_D_M + 1])
-    95   1563840  824621090.0    527.3      0.9              hhat_j = (*state_i[StateVar_H_1:StateVar_H_M + 1], )
-    96   1749120 1053453391.0    602.3      1.1          s = X - 1 - sum(dhat_j)
-    97   1749120  829051064.0    474.0      0.9          p_spawn = (s - (D_min - 1)) / (X - D_min)
-    98                                                   # TODO: Can p_spawn ever be 1 or greater?
-    99   1749120  652128443.0    372.8      0.7          if p_spawn < 0:
-   100    928320  294185555.0    316.9      0.3              p_spawn = 0
-   101    820800  313769937.0    382.3      0.3          elif p_spawn > 1:
-   102                                                       p_spawn = 1
-   103                                                   # p_spawn = min(1, max(0, p_spawn))
-   104   1749120  680087161.0    388.8      0.7          p_no_spawn = 1 - p_spawn
-   105   1749120  502437744.0    287.3      0.5          try:
-   106                                                       # m_min will be the Python index from the start of the list
-   107   1749120 1312292497.0    750.3      1.4              m_min = dhat_j[1:].index(0) + 1
-   108    406080  169233175.0    416.7      0.2          except ValueError:
-   109                                                       # No zero was found in the slice, so m_min defaults to M-1
-   110    406080  197557343.0    486.5      0.2              m_min = M - 1
-   111   1749120  580368107.0    331.8      0.6          dspawn_j = None
-   112   1749120  615626251.0    352.0      0.6          if p_spawn > 0:
-   113    498240  447049994.0    897.3      0.5              dspawn_j = tuple(dhat_j[:m_min] + (s, ) + dhat_j[m_min+1:])
-   114    498240  270522343.0    543.0      0.3              h_prefix = tuple(hhat_j[:m_min])
-   115    498240  270327260.0    542.6      0.3              h_suffix = tuple(hhat_j[m_min+1:])
-   116                                           
-   117                                                   # Each input will push to a seperate index in coo_*
-   118                                                   # Important note: Duplicate entries will be SUMMED!
-   119                                                   # This means that we do not have to worry about two inputs resulting in the same next_state (See += in compute_transition_probabilities)
-   120   6996480 2911305198.0    416.1      3.0          for input_index, u_k, p_flap, W_v_list in U:
-   121  17491200 5747699525.0    328.6      6.0              for w_v in W_v_list:
-   122  12243840 5874157943.0    479.8      6.1                  v_j = V_LOOKUP[V_LOOKUP_OFFSET + state_i[StateVar_V] + u_k + w_v - g]
-   123                                           
-   124                                                           # Case 1: No spawn
-   125  12243840 3972495613.0    324.4      4.1                  if p_no_spawn > 0:
-   126                                                               # Big speed up options:
-   127                                                               # TODO: j_index can be auto calculated using an understanding of the state
-   128                                                               # TODO: Use a function that CALCULATES a state -> index mapping using knowledge of state construction
-   129  11820480 5693114936.0    481.6      5.9                      next_state = (y_j, v_j) + dhat_j + hhat_j
-   130  11820480 5608705104.0    474.5      5.8                      j_index = state_to_index_dict[next_state]
+    86         8       3633.0    454.1      0.0      V_LOOKUP_OFFSET = abs(min_v)
+    87         8      64353.0   8044.1      0.0      V_LOOKUP = [min(V_max, max(-V_max, v)) for v in range(min_v, max_v+1)]
+    88                                           
+    89     11888    5572507.0    468.8      1.6      for state_i, state_index in valid_states_with_indices:
+    90     11880    5914894.0    497.9      1.7          y_j = Y_LOOKUP[Y_LOOKUP_OFFSET + state_i[StateVar_Y] + state_i[StateVar_V]]
+    91     11880    4435071.0    373.3      1.3          if state_i[StateVar_D_1] == 0: # Passing
+    92      3600    1888166.0    524.5      0.5              if abs(state_i[StateVar_Y] - state_i[StateVar_H_1]) > G_limit:
+    93      3160     802000.0    253.8      0.2                  continue # Crash!
+    94       440     367811.0    835.9      0.1              dhat_j = (state_i[StateVar_D_2] - 1, *state_i[StateVar_D_2+1:StateVar_D_M+1], 0)
+    95       440     249149.0    566.2      0.1              hhat_j = (*state_i[StateVar_H_2:StateVar_H_M + 1], S_h_0)
+    96                                                   else:
+    97      8280    6178035.0    746.1      1.8              dhat_j = (state_i[StateVar_D_1] - 1, *state_i[StateVar_D_2:StateVar_D_M + 1])
+    98      8280    4069752.0    491.5      1.2              hhat_j = (*state_i[StateVar_H_1:StateVar_H_M + 1], )
+    99      8720    5099645.0    584.8      1.5          s = X - 1 - sum(dhat_j)
+   100      8720    4047838.0    464.2      1.2          p_spawn = (s - (D_min - 1)) / (X - D_min)
+   101                                                   # TODO: Can p_spawn ever be 1 or greater?
+   102      8720    3073080.0    352.4      0.9          if p_spawn < 0:
+   103      5536    1663145.0    300.4      0.5              p_spawn = 0
+   104      3184    1093962.0    343.6      0.3          elif p_spawn > 1:
+   105                                                       p_spawn = 1
+   106                                                   # p_spawn = min(1, max(0, p_spawn))
+   107      8720    3242166.0    371.8      0.9          p_no_spawn = 1 - p_spawn
+   108      8720    2306395.0    264.5      0.7          try:
+   109                                                       # m_min will be the Python index from the start of the list
+   110      8720    7063040.0    810.0      2.0              m_min = dhat_j[1:].index(0) + 1
+   111      4896    1772470.0    362.0      0.5          except ValueError:
+   112                                                       # No zero was found in the slice, so m_min defaults to M-1
+   113      4896    2022481.0    413.1      0.6              m_min = M - 1
+   114      8720    2333025.0    267.5      0.7          dspawn_j = None
+   115      8720    2783667.0    319.2      0.8          if p_spawn > 0:
+   116      1880    1579559.0    840.2      0.5              dspawn_j = tuple(dhat_j[:m_min] + (s, ) + dhat_j[m_min+1:])
+   117      1880     880150.0    468.2      0.3              h_prefix = tuple(hhat_j[:m_min])
+   118      1880     940542.0    500.3      0.3              h_suffix = tuple(hhat_j[m_min+1:])
+   119                                           
+   120                                                   # Each input will push to a seperate index in coo_*
+   121                                                   # Important note: Duplicate entries will be SUMMED!
+   122                                                   # This means that we do not have to worry about two inputs resulting in the same next_state (See += in compute_transition_probabilities)
+   123     34880   13239933.0    379.6      3.8          for input_index, u_k, p_flap, W_v_list in U:
+   124     69760   21972486.0    315.0      6.4              for w_v in W_v_list:
+   125     43600   19988903.0    458.5      5.8                  v_j = V_LOOKUP[V_LOOKUP_OFFSET + state_i[StateVar_V] + u_k + w_v - g]
+   126                                           
+   127                                                           # Case 1: No spawn
+   128     43600   12871328.0    295.2      3.7                  if p_no_spawn > 0:
+   129     41080   32142271.0    782.4      9.3                      index_tuple = tuple([y_j, v_j + v_offset] + list(dhat_j) + list(hhat_j))
+   130     41080   21488603.0    523.1      6.2                      j_index = state_to_index_array[index_tuple]
    131                                           
-   132  11820480 5533926596.0    468.2      5.7                      append_data[input_index](p_flap * p_no_spawn)
-   133  11820480 4615188394.0    390.4      4.8                      append_rows[input_index](state_index)
-   134  11820480 4461491866.0    377.4      4.6                      append_cols[input_index](j_index)
+   132     41080   17934708.0    436.6      5.2                      append_data[input_index](p_flap * p_no_spawn)
+   133     41080   15216224.0    370.4      4.4                      append_rows[input_index](state_index)
+   134     41080   13775068.0    335.3      4.0                      append_cols[input_index](j_index)
    135                                           
    136                                                           # Case 2: Spawn
-   137  12243840 4448122806.0    363.3      4.6                  if p_spawn > 0:
-   138   3487680 1475901004.0    423.2      1.5                      spawn_prefix = (y_j, v_j) + dspawn_j
-   139   3487680 1356191334.0    388.9      1.4                      p_combined = p_flap * p_spawn * p_height
-   140  12126240 3801145161.0    313.5      3.9                      for height in S_h:
-   141                                                                   # Big speed up options:
-   142                                                                   # TODO: j_index can be auto calculated using an understanding of the state
-   143                                                                   # TODO: Use a function that CALCULATES a state -> index mapping using knowledge of state construction
-   144   8638560 4384272821.0    507.5      4.6                          next_state = spawn_prefix + h_prefix + (height,) + h_suffix
-   145   8638560 4107968037.0    475.5      4.3                          j_index = state_to_index_dict[next_state]
-   146                                           
-   147   8638560 3375163814.0    390.7      3.5                          append_data[input_index](p_combined)
-   148   8638560 3260147865.0    377.4      3.4                          append_rows[input_index](state_index)
-   149   8638560 3412607609.0    395.0      3.5                          append_cols[input_index](j_index)
-   150                                           
-   151                                               # Construct the sparse matrices
-   152       576     463770.0    805.2      0.0      P_sparse_list = []
-   153      2304    8715432.0   3782.7      0.0      for l in range(C.L):
-   154                                                   # Build as COO first (fastest for this input)
-   155      3456 6799365442.0 1.97e+06      7.1          P_l_coo = coo_matrix(
-   156      1728    1981518.0   1146.7      0.0              (coo_data[l], (coo_rows[l], coo_cols[l])),
-   157      1728     600613.0    347.6      0.0              shape=(K, K)
-   158                                                   )
-   159                                                   # Convert to CSC (fast, sums duplicates)
-   160      1728  545108011.0 315456.0      0.6          P_l = P_l_coo.tocsc()
-   161      1728    2436638.0   1410.1      0.0          P_sparse_list.append(P_l)
-   162                                           
-   163       576     204132.0    354.4      0.0      return P_sparse_list
+   137     43600   14318703.0    328.4      4.2                  if p_spawn > 0:
+   138      9400    3620693.0    385.2      1.1                      p_combined = p_flap * p_spawn * p_height
+   139     28200    8668233.0    307.4      2.5                      for height in S_h:
+   140     18800    7845483.0    417.3      2.3                          h_spawn = h_prefix + (height,) + h_suffix
+   141                                                                   
+   142     18800   14725586.0    783.3      4.3                          index_tuple = tuple([y_j, v_j + v_offset] + list(dspawn_j) + list(h_spawn))
+   143     18800    9632611.0    512.4      2.8                          j_index = state_to_index_array[index_tuple]
+   144                                           
+   145     18800    6585527.0    350.3      1.9                          append_data[input_index](p_combined)
+   146     18800    6325391.0    336.5      1.8                          append_rows[input_index](state_index)
+   147     18800    6763584.0    359.8      2.0                          append_cols[input_index](j_index)
+   148                                           
+   149                                               # Construct the sparse matrices
+   150         8       2587.0    323.4      0.0      P_sparse_list = []
+   151        32     143537.0   4485.5      0.0      for l in range(C.L):
+   152                                                   # Build as COO first (fastest for this input)
+   153        48   21787173.0 453899.4      6.3          P_l_coo = coo_matrix(
+   154        24      20423.0    851.0      0.0              (coo_data[l], (coo_rows[l], coo_cols[l])),
+   155        24       9715.0    404.8      0.0              shape=(K, K)
+   156                                                   )
+   157                                                   # Convert to CSC (fast, sums duplicates)
+   158        24    5460918.0 227538.2      1.6          P_l = P_l_coo.tocsc()
+   159        24      28847.0   1202.0      0.0          P_sparse_list.append(P_l)
+   160                                           
+   161         8       2340.0    292.5      0.0      return P_sparse_list
 
-Total time: 339.798 s
+Total time: 0.472198 s
+Average time: 0.118049 s
 File: /home/gblum/dev/dpc/Solver.py
 Function: solution_linear_prog_sparse at line 107
 
@@ -191,256 +192,214 @@ Line #      Hits         Time  Per Hit   % Time  Line Contents
    123                                                   np.array: The optimal control policy for the stochastic SPP,
    124                                                       of shape (C.K,), where each entry is in {0,...,C.L-1}.
    125                                               """
-   126       576    1026549.0   1782.2      0.0      ss = CustomStateSpace()
-   127       576     2.58e+10 4.48e+07      7.6      K, state_dict = ss.custom_state_space(C)
+   126         4      13175.0   3293.8      0.0      ss = CustomStateSpace()
+   127         4   95041633.0 2.38e+07     20.1      K, state_array, valid_states = ss.custom_state_space(C)
    128                                           
-   129       576    8611681.0  14950.8      0.0      J_opt = np.zeros(K)
-   130       576    2368642.0   4112.2      0.0      u_opt = np.zeros(K)
+   129         4      56712.0  14178.0      0.0      J_opt = np.zeros(K)
+   130         4      14279.0   3569.8      0.0      u_opt = np.zeros(K)
    131                                           
-   132       576     1.62e+11 2.82e+08     47.8      P = compute_transition_probabilities(C, state_dict, K)
-   133       576   53352554.0  92626.0      0.0      Q, b = compute_expected_stage_cost(C, K)
+   132         4  273495158.0 6.84e+07     57.9      P = compute_transition_probabilities(C, state_array, K, valid_states)
+   133         4     249298.0  62324.5      0.1      Q, b = compute_expected_stage_cost(C, K)
    134                                           
-   135       576    8356357.0  14507.6      0.0      c = np.full(K, -1, np.int64)
+   135         4      39960.0   9990.0      0.0      c = np.full(K, -1, np.int64)
    136                                           
    137                                               # 1. Create a sparse identity matrix
-   138       576  107200059.0 186111.2      0.0      I_sparse = eye(K, format='csc')
+   138         4     599121.0 149780.2      0.1      I_sparse = eye(K, format='csc')
    139                                           
    140                                               # 2. Create a list to hold the sparse blocks (I - P_l)
-   141       576     511686.0    888.3      0.0      A_blocks = []
+   141         4       2141.0    535.2      0.0      A_blocks = []
    142                                           
    143                                               # 3. Loop over all actions
-   144      2304    4223488.0   1833.1      0.0      for l in range(C.L):
+   144        16      21519.0   1344.9      0.0      for l in range(C.L):
    145                                                   # Add the sparse (I - P_l) block to our list
-   146      1728  632083261.0 365788.9      0.2          A_blocks.append(I_sparse - P[l])
+   146        12    3572006.0 297667.2      0.8          A_blocks.append(I_sparse - P[l])
    147                                           
    148                                               # 4. Stack all blocks vertically into one sparse matrix
-   149       576  412560662.0 716251.1      0.1      A = vstack(A_blocks, format='csc')
+   149         4    2321152.0 580288.0      0.5      A = vstack(A_blocks, format='csc')
    150                                           
    151                                               # 'highs' is the best for sparse problems
-   152       576      1.5e+11 2.61e+08     44.2      res = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0], method='highs')
+   152         4   95872472.0  2.4e+07     20.3      res = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0], method='highs')
    153                                           
-   154       576    4081240.0   7085.5      0.0      J_opt = res.x
+   154         4      31251.0   7812.8      0.0      J_opt = res.x
    155                                           
    156                                               # Create a list of weighted_J vectors, one for each action l
-   157       576     359395.0    623.9      0.0      weighted_J_cols = []
-   158      2148    5711572.0   2659.0      0.0      for l in range(C.L):
+   157         4       1900.0    475.0      0.0      weighted_J_cols = []
+   158        16      43627.0   2726.7      0.0      for l in range(C.L):
    159                                                   # P[l] is (K, K) sparse, J_opt is (K,) dense
    160                                                   # The @ operator performs efficient sparse-dot-dense
-   161      1624   87350897.0  53787.5      0.0          weighted_J_l = P[l] @ J_opt  # Result is a (K,) dense vector
-   162      1572    1525601.0    970.5      0.0          weighted_J_cols.append(weighted_J_l)
+   161        12     438988.0  36582.3      0.1          weighted_J_l = P[l] @ J_opt  # Result is a (K,) dense vector
+   162        12       9059.0    754.9      0.0          weighted_J_cols.append(weighted_J_l)
    163                                           
    164                                               # Stack the (K,) vectors as columns into a (K, L) dense array
-   165       524   31142025.0  59431.3      0.0      weighted_J_all = np.stack(weighted_J_cols, axis=1)
-   166       524   28420705.0  54238.0      0.0      expected_values = Q + weighted_J_all
+   165         4     155932.0  38983.0      0.0      weighted_J_all = np.stack(weighted_J_cols, axis=1)
+   166         4      72480.0  18120.0      0.0      expected_values = Q + weighted_J_all
    167                                           
-   168       524   33354294.0  63653.2      0.0      optimal_indices = np.argmin(expected_values, axis=1)
-   169       524    8353869.0  15942.5      0.0      u_opt = np.array(C.input_space)[optimal_indices]
+   168         4     111432.0  27858.0      0.0      optimal_indices = np.argmin(expected_values, axis=1)
+   169         4      32681.0   8170.2      0.0      u_opt = np.array(C.input_space)[optimal_indices]
    170                                           
-   171       524     236270.0    450.9      0.0      return J_opt, u_opt
+   171         4       1656.0    414.0      0.0      return J_opt, u_opt
 
-Total time: 0 s
-File: /home/gblum/dev/dpc/Solver.py
-Function: solution_value_iteration at line 173
-
-Line #      Hits         Time  Per Hit   % Time  Line Contents
-==============================================================
-   173                                           def solution_value_iteration(C: Const, epsilon=1e-8, max_iter=10000) -> tuple[np.array, np.array]:
-   174                                               """Computes the optimal cost and the optimal control policy.
-   175                                           
-   176                                               You can solve the SSP by any method:
-   177                                               - Value Iteration
-   178                                               - Policy Iteration
-   179                                               - Linear Programming
-   180                                               - A combination of the above
-   181                                               - Others?
-   182                                           
-   183                                               Args:
-   184                                                   C (Const): The constants describing the problem instance.
-   185                                           
-   186                                               Returns:
-   187                                                   np.array: The optimal cost to go for the stochastic SPP,
-   188                                                       of shape (C.K,), where C.K is the number of states.
-   189                                                   np.array: The optimal control policy for the stochastic SPP,
-   190                                                       of shape (C.K,), where each entry is in {0,...,C.L-1}.
-   191                                               """
-   192                                           
-   193                                               ss = CustomStateSpace()
-   194                                               K, state_dict = ss.custom_state_space(C)
-   195                                               P = compute_transition_probabilities(C, state_dict, K)
-   196                                               Q, _ = compute_expected_stage_cost(C, K)
-   197                                           
-   198                                               # 2. Initialize J (Value function)
-   199                                               J = np.zeros(K)
-   200                                           
-   201                                               # Pre-allocate arrays
-   202                                               J_current = np.zeros(K)
-   203                                               J_next = np.empty(K)
-   204                                           
-   205                                               val_l = np.empty(K)
-   206                                           
-   207                                               for i in range(max_iter):
-   208                                                   # 1. Initialize J_next with the value of the first action (l=0)
-   209                                                   # Q[:, 0] is (K,), P[0] @ J_old is (K,)
-   210                                                   np.add(Q[:, 0], (P[0] @ J_current), out=J_next)
-   211                                           
-   212                                                   # 2. Loop from the second action (l=1)
-   213                                                   for l in range(1, C.L):
-   214                                                       # Calculate the value for this action: Q_l + P_l * J_current
-   215                                                       np.add(Q[:, l], (P[l] @ J_current), out=val_l)
-   216                                           
-   217                                                       # Update J_next to be the element-wise minimum
-   218                                                       np.minimum(J_next, val_l, out=J_next)
-   219                                           
-   220                                                   if np.max(np.abs(J_next - J_current)) < epsilon:
-   221                                                       J_current = J_next  # Converged. J_next is the final value.
-   222                                                       break
-   223                                           
-   224                                                   J_current, J_next = J_next, J_current
-   225                                           
-   226                                               # 4. Recover the optimal policy (u_opt)
-   227                                               expected_values_cols = []
-   228                                               for l in range(C.L):
-   229                                                   # Use the final converged J_opt
-   230                                                   val_l = Q[:, l] + (P[l] @ J_current)
-   231                                                   expected_values_cols.append(val_l)
-   232                                           
-   233                                               expected_values = np.stack(expected_values_cols, axis=1)
-   234                                           
-   235                                               optimal_indices = np.argmin(expected_values, axis=1)
-   236                                               u_opt = np.array(C.input_space)[optimal_indices]
-   237                                           
-   238                                               return J_current, u_opt
-
-Total time: 339.925 s
-File: /home/gblum/dev/dpc/Solver.py
-Function: solution_picker at line 248
+Total time: 2.58787 s
+Average time: 2.58787 s
+File: /home/gblum/dev/dpc/env/lib/python3.11/timeit.py
+Function: Timer.timeit at line 166
 
 Line #      Hits         Time  Per Hit   % Time  Line Contents
 ==============================================================
-   248                                           def solution_picker(C: Const) -> tuple[np.array, np.array]:
-   249                                               # TODO: Minor, but this is technically overhead
-   250                                           
-   251       576     976762.0   1695.8      0.0      selected_solution = SOLUTION_FUNCTIONS[SOL_LP]
-   252                                           
-   253       576      3.4e+11  5.9e+08    100.0      return selected_solution(C)
+   166                                               def timeit(self, number=default_number):
+   167                                                   """Time 'number' executions of the main statement.
+   168                                           
+   169                                                   To be precise, this executes the setup statement once, and
+   170                                                   then returns the time it takes to execute the main statement
+   171                                                   a number of times, as float seconds if using the default timer.   The
+   172                                                   argument is the number of times through the loop, defaulting
+   173                                                   to one million.  The main statement, the setup statement and
+   174                                                   the timer function to be used are passed to the constructor.
+   175                                                   """
+   176         1       1855.0   1855.0      0.0          it = itertools.repeat(None, number)
+   177         1       1208.0   1208.0      0.0          gcold = gc.isenabled()
+   178         1        586.0    586.0      0.0          gc.disable()
+   179         1        243.0    243.0      0.0          try:
+   180         1 2587180956.0 2.59e+09    100.0              timing = self.inner(it, self.timer)
+   181                                                   finally:
+   182         1        396.0    396.0      0.0              if gcold:
+   183         1     683634.0 683634.0      0.0                  gc.enable()
+   184         1       1081.0   1081.0      0.0          return timing
 
-Total time: 13.4497 s
+Total time: 0.0977356 s
+Average time: 1.62568e-05 s
 File: /home/gblum/dev/dpc/utils.py
-Function: CustomStateSpace.build_d_recursive at line 83
+Function: CustomStateSpace.build_d_recursive at line 84
 
 Line #      Hits         Time  Per Hit   % Time  Line Contents
 ==============================================================
-    83                                               def build_d_recursive(self, y, v, current_d_list, current_d_sum, d_index, spot0):
-    84                                                   """
-    85                                                   Recursively builds the D-vector (d1, ..., dM) for a given
-    86                                                   (y, v) prefix.
-    87                                           
-    88                                                   Pruning:
-    89                                                   - sum(d) > X-1
-    90                                                   - Trailing zeros (if d_i=0, all d_j for j>i must be 0)
-    91                                                   - d2=0 if d1=0
-    92                                                   """
-    93                                                   # --- Base Case: D-vector is complete ---
-    94   1023840  407072259.0    397.6      3.0          if d_index == self.M:
-    95                                                       # D-vector is built, now start building the H-vector
-    96    505440  210514783.0    416.5      1.6              h_iterable = self.possible_h_iterables[spot0]
-    97                                           
-    98    505440  313702195.0    620.7      2.3              prefix = (y, v) + tuple(current_d_list)
-    99                                           
-   100                                                       # 2. Loop over the product of these allowed H-options
-   101   3214080 1041253829.0    324.0      7.7              for h_tuple in h_iterable:
-   102   2708640 1209263450.0    446.4      9.0                  state = prefix + h_tuple
-   103   2708640 1464208521.0    540.6     10.9                  self.state_to_index_dict[state] = self.current_index
-   104   2708640 1139845923.0    420.8      8.5                  self.current_index += 1
-   105                                           
-   106    505440  157482114.0    311.6      1.2              return
-   107                                           
-   108                                                   # --- Recursive Step: Add d_i ---
-   109    518400  183364999.0    353.7      1.4          if d_index == 0:
-   110     25920   11330304.0    437.1      0.1              d_options = self.S_d1
-   111    492480  173550819.0    352.4      1.3          elif spot0 > 0:
-   112     90720   33460116.0    368.8      0.2              d_options = self.S_d0
-   113                                                   else:
-   114    401760  139404893.0    347.0      1.0              d_options = self.S_d
-   115                                           
-   116   3019680 1027674888.0    340.3      7.6          for d in d_options:
-   117                                                       # 1. Sum constraint
-   118   2501280 1028658008.0    411.3      7.6              if current_d_sum + d > self.X_limit:
-   119   1477440  422117837.0    285.7      3.1                  continue
-   120                                           
-   121                                                       # 3. d1/d2 constraint (d1=0 -> d2>0)
-   122                                                       # d_index == 1 is d2
-   123   1023840  369176930.0    360.6      2.7              if d_index == 1:
-   124    479520  180502797.0    376.4      1.3                  d1 = current_d_list[0]
-   125    479520  148437819.0    309.6      1.1                  d2 = d
-   126    479520  177262432.0    369.7      1.3                  if d1 <= 0 and d2 == 0:
-   127     25920    7746259.0    298.9      0.1                      continue
-   128                                           
-   129    997920  339270543.0    340.0      2.5              next_spot0 = spot0
-   130    997920  434828399.0    435.7      3.2              if spot0 == 0 and d_index > 0 and d == 0:
-   131    375840  110839784.0    294.9      0.8                  next_spot0 = d_index  # This is the first zero
-   132                                           
-   133                                                       # Recurse with the added d
-   134    997920  381957575.0    382.8      2.8              current_d_list[d_index] = d
-   135   1995840  786539812.0    394.1      5.8              self.build_d_recursive(
-   136    997920  307461164.0    308.1      2.3                  y, v,
-   137    997920  290528597.0    291.1      2.2                  current_d_list,
-   138    997920  321947399.0    322.6      2.4                  current_d_sum + d,
-   139    997920  345565666.0    346.3      2.6                  d_index + 1,
-   140                                                           # Update zero_seen flag:
-   141                                                           # (zero_seen is True if it was already True, OR
-   142                                                           # if we are adding a zero *after* d1)
-   143    997920  284720676.0    285.3      2.1                  next_spot0
-   144                                                       )
+    84                                               def build_d_recursive(self, y, v, current_d_list, current_d_sum, d_index, spot0):
+    85                                                   """
+    86                                                   Recursively builds the D-vector (d1, ..., dM) for a given
+    87                                                   (y, v) prefix.
+    88                                           
+    89                                                   Pruning:
+    90                                                   - sum(d) > X-1
+    91                                                   - Trailing zeros (if d_i=0, all d_j for j>i must be 0)
+    92                                                   - d2=0 if d1=0
+    93                                                   """
+    94                                                   # --- Base Case: D-vector is complete ---
+    95      6012    2668143.0    443.8      2.7          if d_index == self.M:
+    96                                                       # D-vector is built, now start building the H-vector
+    97      3816    1787799.0    468.5      1.8              h_iterable = self.possible_h_iterables[spot0]
+    98                                           
+    99      3816    2693695.0    705.9      2.8              prefix = (y, v) + tuple(current_d_list)
+   100                                           
+   101                                                       # 2. Loop over the product of these allowed H-options
+   102     15696    6060840.0    386.1      6.2              for h_tuple in h_iterable:
+   103     11880    4862701.0    409.3      5.0                  state = prefix + h_tuple
+   104                                                           
+   105     11880   12872010.0   1083.5     13.2                  index_tuple = tuple([y, v + self.v_offset] + list(current_d_list) + list(h_tuple))
+   106                                           
+   107     11880    8142986.0    685.4      8.3                  self.state_to_index_array[index_tuple] = self.current_index
+   108     11880    7865413.0    662.1      8.0                  self.valid_states_with_indices.append((state, self.current_index))
+   109     11880    5757592.0    484.6      5.9                  self.current_index += 1
+   110                                           
+   111      3816    1362705.0    357.1      1.4              return        # --- Recursive Step: Add d_i ---
+   112      2196     866508.0    394.6      0.9          if d_index == 0:
+   113       252     117390.0    465.8      0.1              d_options = self.S_d1
+   114      1944     749811.0    385.7      0.8          elif spot0 > 0:
+   115                                                       d_options = self.S_d0
+   116                                                   else:
+   117      1944     758328.0    390.1      0.8              d_options = self.S_d
+   118                                           
+   119     13140    4900723.0    373.0      5.0          for d in d_options:
+   120                                                       # 1. Sum constraint
+   121     10944    5177368.0    473.1      5.3              if current_d_sum + d > self.X_limit:
+   122      4932    1594609.0    323.3      1.6                  continue
+   123                                           
+   124                                                       # 3. d1/d2 constraint (d1=0 -> d2>0)
+   125                                                       # d_index == 1 is d2
+   126      6012    2306468.0    383.6      2.4              if d_index == 1:
+   127      4068    1684945.0    414.2      1.7                  d1 = current_d_list[0]
+   128      4068    1349785.0    331.8      1.4                  d2 = d
+   129      4068    1509189.0    371.0      1.5                  if d1 <= 0 and d2 == 0:
+   130       252      81767.0    324.5      0.1                      continue
+   131                                           
+   132      5760    2079939.0    361.1      2.1              next_spot0 = spot0
+   133      5760    2792141.0    484.7      2.9              if spot0 == 0 and d_index > 0 and d == 0:
+   134      1692     522149.0    308.6      0.5                  next_spot0 = d_index  # This is the first zero
+   135                                           
+   136                                                       # Recurse with the added d
+   137      5760    2504224.0    434.8      2.6              current_d_list[d_index] = d
+   138     11520    5165010.0    448.4      5.3              self.build_d_recursive(
+   139      5760    1849618.0    321.1      1.9                  y, v,
+   140      5760    1815854.0    315.3      1.9                  current_d_list,
+   141      5760    1985102.0    344.6      2.0                  current_d_sum + d,
+   142      5760    2159928.0    375.0      2.2                  d_index + 1,
+   143                                                           # Update zero_seen flag:
+   144                                                           # (zero_seen is True if it was already True, OR
+   145                                                           # if we are adding a zero *after* d1)
+   146      5760    1690885.0    293.6      1.7                  next_spot0
+   147                                                       )
 
-Total time: 25.7739 s
+Total time: 0.178536 s
+Average time: 0.022317 s
 File: /home/gblum/dev/dpc/utils.py
-Function: CustomStateSpace.custom_state_space at line 146
+Function: CustomStateSpace.custom_state_space at line 149
 
 Line #      Hits         Time  Per Hit   % Time  Line Contents
 ==============================================================
-   146                                               def custom_state_space(self, C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
-   147                                                   """
-   148                                                   Computes the state space and returns a state -> index dictionary
-   149                                                   using a recursive, pruning-based generation method.
-   150                                           
-   151                                                   This function maintains the strict lexicographical ordering
-   152                                                   from the problem statement, ensuring the state-to-index
-   153                                                   mapping is identical to the original 'itertools.product' method,
-   154                                                   but is significantly faster by pruning invalid branches early.
-   155                                                   """
-   156                                           
-   157                                           
-   158       576     578292.0   1004.0      0.0          self.state_to_index_dict = {}
-   159       576     429209.0    745.2      0.0          self.current_index = 0
+   149                                               def custom_state_space(self, C: Const) -> Tuple[int, np.ndarray, list]:
+   150                                                   """
+   151                                                   Computes the state space and returns a state -> index dictionary
+   152                                                   using a recursive, pruning-based generation method.
+   153                                           
+   154                                                   This function maintains the strict lexicographical ordering
+   155                                                   from the problem statement, ensuring the state-to-index
+   156                                                   mapping is identical to the original 'itertools.product' method,
+   157                                                   but is significantly faster by pruning invalid branches early.
+   158                                                   """
+   159                                           
    160                                           
-   161                                                   # --- Cache constants from C for minor speedup ---
-   162       576    4923050.0   8547.0      0.0          self.S_y, self.S_v = C.S_y, C.S_v
-   163       576    3241157.0   5627.0      0.0          self.S_d, self.S_d1 = C.S_d, C.S_d1
-   164       576     765089.0   1328.3      0.0          self.S_h, self.S_h_default = C.S_h, C.S_h[0]
-   165       576    2294563.0   3983.6      0.0          self.M, self.X_limit = C.M, C.X - 1
-   166                                           
-   167                                                   # Pre-build the two possible lists for H-options
-   168       576     450339.0    781.8      0.0          self.h_options_all = self.S_h
-   169       576     432751.0    751.3      0.0          self.h_options_default = [self.S_h_default]
-   170                                           
-   171                                                   # Pre build an empty D-options list
-   172       576     361506.0    627.6      0.0          self.S_d0 = [0]
-   173                                           
-   174       576    2570163.0   4462.1      0.0          possible_h_iterables = [[self.h_options_all] + [self.h_options_all for i in range(1, self.M)]]
-   175      1440     987027.0    685.4      0.0          for spot0 in range(1, self.M):
-   176      1728    4310817.0   2494.7      0.0              possible_h_iterables.append([self.h_options_all] + [
-   177                                                           self.h_options_default if i >= spot0 else self.h_options_all
-   178       864     459304.0    531.6      0.0                  for i in range(1, self.M)
-   179                                                       ])
-   180       576    4191656.0   7277.2      0.0          self.possible_h_iterables = [list(product(*h_iter)) for h_iter in possible_h_iterables]
+   161         8       9287.0   1160.9      0.0          self.current_index = 0
+   162         8       7220.0    902.5      0.0          self.valid_states_with_indices = []
+   163                                           
+   164                                                   # --- Cache constants from C for minor speedup ---
+   165         8      64604.0   8075.5      0.0          self.S_y, self.S_v = C.S_y, C.S_v
+   166         8      56566.0   7070.8      0.0          self.S_d, self.S_d1 = C.S_d, C.S_d1
+   167         8      10012.0   1251.5      0.0          self.S_h, self.S_h_default = C.S_h, C.S_h[0]
+   168         8      57141.0   7142.6      0.0          self.M, self.X_limit = C.M, C.X - 1
+   169                                           
+   170                                                   # --- Create mappings for non-contiguous state variables ---
+   171         8       6270.0    783.8      0.0          self.v_offset = C.V_max
+   172                                           
+   173                                                   # --- Initialize state_to_index_array ---
+   174         8       7405.0    925.6      0.0          dims = [C.Y, 2 * C.V_max + 1]
+   175        24      18863.0    786.0      0.0          for _ in range(self.M):
+   176        16      14063.0    878.9      0.0              dims.append(C.X) # d values are 0..X-1
+   177        24      11207.0    467.0      0.0          for _ in range(self.M):
+   178        16       7866.0    491.6      0.0              dims.append(C.Y) # h values are 0..Y-1
+   179                                                   
+   180         8     776554.0  97069.2      0.4          self.state_to_index_array = np.full(dims, -1, dtype=np.int32)
    181                                           
-   182                                                   # The outer loops *must* be y, then v, to maintain order
-   183      5760    3558001.0    617.7      0.0          for y in self.S_y:
-   184     31104   17269470.0    555.2      0.1              for v in self.S_v:
-   185     25920   28536103.0   1100.9      0.1                  current_d_list_for_v = [0] * self.M
-   186                                                           # Start the recursion for the D-vector
-   187     25920     2.57e+10 991387.2     99.7                  self.build_d_recursive(y, v, current_d_list_for_v, 0, 0, 0)
-   188                                           
-   189       576    1772117.0   3076.6      0.0          return len(self.state_to_index_dict), self.state_to_index_dict
+   182                                           
+   183                                                   # Pre-build the two possible lists for H-options
+   184         8      24187.0   3023.4      0.0          self.h_options_all = self.S_h
+   185         8       8145.0   1018.1      0.0          self.h_options_default = [self.S_h_default]
+   186                                           
+   187                                                   # Pre build an empty D-options list
+   188         8       5297.0    662.1      0.0          self.S_d0 = [0]
+   189                                           
+   190         8      39287.0   4910.9      0.0          possible_h_iterables = [[self.h_options_all] + [self.h_options_all for i in range(1, self.M)]]
+   191        16      12235.0    764.7      0.0          for spot0 in range(1, self.M):
+   192        16      42974.0   2685.9      0.0              possible_h_iterables.append([self.h_options_all] + [
+   193                                                           self.h_options_default if i >= spot0 else self.h_options_all
+   194         8       5377.0    672.1      0.0                  for i in range(1, self.M)
+   195                                                       ])
+   196         8      58029.0   7253.6      0.0          self.possible_h_iterables = [list(product(*h_iter)) for h_iter in possible_h_iterables]
+   197                                           
+   198                                                   # The outer loops *must* be y, then v, to maintain order
+   199        68      50117.0    737.0      0.0          for y in self.S_y:
+   200       312     152221.0    487.9      0.1              for v in self.S_v:
+   201       252     232727.0    923.5      0.1                  current_d_list_for_v = [0] * self.M
+   202                                                           # Start the recursion for the D-vector
+   203       252  176850672.0 701788.4     99.1                  self.build_d_recursive(y, v, current_d_list_for_v, 0, 0, 0)
+   204                                           
+   205         8       7471.0    933.9      0.0          return self.current_index, self.state_to_index_array, self.valid_states_with_indices
 

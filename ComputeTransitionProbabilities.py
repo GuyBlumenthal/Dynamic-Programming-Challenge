@@ -25,7 +25,7 @@ from scipy.sparse import csc_matrix, coo_matrix
 
 from utils import CustomStateSpace
 
-def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> list:
+def compute_transition_probabilities_sparse(C:Const, state_to_index_array, K, valid_states_with_indices) -> list:
     """Computes the transition probability matrix P as a list of sparse matrices."""
 
     # Each action in C.input_space will have its own sparse probability matrix
@@ -55,6 +55,9 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
     U_strong_prob = 1 / (2 * C.V_dev + 1)
     W_v = C.W_v
 
+    # --- Create mappings for non-contiguous state variables ---
+    v_offset = C.V_max
+
     StateVar_Y = 0
     StateVar_V = 1
     StateVar_D_1 = 2
@@ -83,7 +86,7 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
     V_LOOKUP_OFFSET = abs(min_v)
     V_LOOKUP = [min(V_max, max(-V_max, v)) for v in range(min_v, max_v+1)]
 
-    for state_i, state_index in state_to_index_dict.items():
+    for state_i, state_index in valid_states_with_indices:
         y_j = Y_LOOKUP[Y_LOOKUP_OFFSET + state_i[StateVar_Y] + state_i[StateVar_V]]
         if state_i[StateVar_D_1] == 0: # Passing
             if abs(state_i[StateVar_Y] - state_i[StateVar_H_1]) > G_limit:
@@ -123,11 +126,8 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
 
                 # Case 1: No spawn
                 if p_no_spawn > 0:
-                    # Big speed up options:
-                    # TODO: j_index can be auto calculated using an understanding of the state
-                    # TODO: Use a function that CALCULATES a state -> index mapping using knowledge of state construction
-                    next_state = (y_j, v_j) + dhat_j + hhat_j
-                    j_index = state_to_index_dict[next_state]
+                    index_tuple = tuple([y_j, v_j + v_offset] + list(dhat_j) + list(hhat_j))
+                    j_index = state_to_index_array[index_tuple]
 
                     append_data[input_index](p_flap * p_no_spawn)
                     append_rows[input_index](state_index)
@@ -135,14 +135,12 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_dict, K) -> 
 
                 # Case 2: Spawn
                 if p_spawn > 0:
-                    spawn_prefix = (y_j, v_j) + dspawn_j
                     p_combined = p_flap * p_spawn * p_height
                     for height in S_h:
-                        # Big speed up options:
-                        # TODO: j_index can be auto calculated using an understanding of the state
-                        # TODO: Use a function that CALCULATES a state -> index mapping using knowledge of state construction
-                        next_state = spawn_prefix + h_prefix + (height,) + h_suffix
-                        j_index = state_to_index_dict[next_state]
+                        h_spawn = h_prefix + (height,) + h_suffix
+                        
+                        index_tuple = tuple([y_j, v_j + v_offset] + list(dspawn_j) + list(h_spawn))
+                        j_index = state_to_index_array[index_tuple]
 
                         append_data[input_index](p_combined)
                         append_rows[input_index](state_index)
@@ -178,8 +176,8 @@ def compute_transition_probabilities(C:Const) -> np.array:
 
     state_space = CustomStateSpace()
 
-    K, state_to_index_dict = state_space.custom_state_space(C)
-    P_sparse_list = compute_transition_probabilities_sparse(C, state_to_index_dict, K)
+    K, state_to_index_dict, valid_state_with_indices = state_space.custom_state_space(C)
+    P_sparse_list = compute_transition_probabilities_sparse(C, state_to_index_dict, K, valid_state_with_indices)
 
     P = np.empty((K, K, C.L), dtype=P_sparse_list[0].dtype)
 
