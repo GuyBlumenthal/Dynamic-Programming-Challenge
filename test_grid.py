@@ -159,7 +159,7 @@ def main():
     # dur = t.timeit(number=iters) / iters
 
     wrapper = lp(t.timeit)
-    wrapper(1)
+    wrapper(4)
 
 
     # for test in tqdm(tests, desc="Test Progress"):

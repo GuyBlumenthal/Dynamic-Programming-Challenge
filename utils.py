@@ -96,16 +96,11 @@ class CustomStateSpace:
             # D-vector is built, now start building the H-vector
             h_iterable = self.possible_h_iterables[spot0]
 
-            prefix = (y, v) + tuple(current_d_list)
-
             # 2. Loop over the product of these allowed H-options
+            prefix = (y, v) + tuple(current_d_list)
             for h_tuple in h_iterable:
-                state = prefix + h_tuple
-                
-                index_tuple = tuple([y, v + self.v_offset] + list(current_d_list) + list(h_tuple))
-
-                self.state_to_index_array[index_tuple] = self.current_index
-                self.valid_states_with_indices.append((state, self.current_index))
+                self.state_to_index_array[*prefix, *h_tuple] = self.current_index
+                self.valid_states_with_indices.append((y, v, current_d_list[:], h_tuple, self.current_index, spot0))
                 self.current_index += 1
 
             return        # --- Recursive Step: Add d_i ---
@@ -119,7 +114,7 @@ class CustomStateSpace:
         for d in d_options:
             # 1. Sum constraint
             if current_d_sum + d > self.X_limit:
-                continue
+                break # These are stored in increasing order
 
             # 3. d1/d2 constraint (d1=0 -> d2>0)
             # d_index == 1 is d2
@@ -140,9 +135,6 @@ class CustomStateSpace:
                 current_d_list,
                 current_d_sum + d,
                 d_index + 1,
-                # Update zero_seen flag:
-                # (zero_seen is True if it was already True, OR
-                # if we are adding a zero *after* d1)
                 next_spot0
             )
 
@@ -171,12 +163,12 @@ class CustomStateSpace:
         self.v_offset = C.V_max
 
         # --- Initialize state_to_index_array ---
-        dims = [C.Y, 2 * C.V_max + 1]
+        dims = [C.Y, self.v_offset + 2 * C.V_max + 1]
         for _ in range(self.M):
             dims.append(C.X) # d values are 0..X-1
         for _ in range(self.M):
             dims.append(C.Y) # h values are 0..Y-1
-        
+
         self.state_to_index_array = np.full(dims, -1, dtype=np.int32)
 
 
