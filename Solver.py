@@ -21,13 +21,11 @@ from scipy.optimize import linprog
 from scipy.sparse import csc_matrix, vstack, eye
 from Const import Const
 
-from utils import custom_state_space
+from utils import CustomStateSpace
 
 from ComputeExpectedStageCosts import compute_expected_stage_cost_solver as compute_expected_stage_cost
 from ComputeExpectedStageCosts import compute_expected_stage_cost as compute_expected_stage_cost_old
 from ComputeTransitionProbabilities import compute_transition_probabilities_sparse as compute_transition_probabilities
-
-from timer import time_def, profile
 
 def solution_template(C: Const) -> tuple[np.array, np.array]:
     """Computes the optimal cost and the optimal control policy.
@@ -125,7 +123,8 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
         np.array: The optimal control policy for the stochastic SPP,
             of shape (C.K,), where each entry is in {0,...,C.L-1}.
     """
-    K, state_dict = custom_state_space(C)
+    ss = CustomStateSpace()
+    K, state_dict = ss.custom_state_space(C)
 
     J_opt = np.zeros(K)
     u_opt = np.zeros(K)
@@ -171,7 +170,6 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
 
     return J_opt, u_opt
 
-@profile
 def solution_value_iteration(C: Const, epsilon=1e-8, max_iter=10000) -> tuple[np.array, np.array]:
     """Computes the optimal cost and the optimal control policy.
 
@@ -192,8 +190,8 @@ def solution_value_iteration(C: Const, epsilon=1e-8, max_iter=10000) -> tuple[np
             of shape (C.K,), where each entry is in {0,...,C.L-1}.
     """
 
-    # 1. Use the SAME optimized setup as solution_linear_prog_sparse
-    K, state_dict = custom_state_space(C)
+    ss = CustomStateSpace()
+    K, state_dict = ss.custom_state_space(C)
     P = compute_transition_probabilities(C, state_dict, K)
     Q, _ = compute_expected_stage_cost(C, K)
 
@@ -239,7 +237,19 @@ def solution_value_iteration(C: Const, epsilon=1e-8, max_iter=10000) -> tuple[np
 
     return J_current, u_opt
 
-solution = solution_linear_prog_sparse
-# solution = solution_value_iteration
+SOL_LP = 0
+SOL_VI = 1
 
-# solution = time_def(profile(solution))
+SOLUTION_FUNCTIONS = {
+    SOL_LP: solution_linear_prog_sparse,
+    SOL_VI: solution_value_iteration,
+}
+
+def solution_picker(C: Const) -> tuple[np.array, np.array]:
+    # TODO: Minor, but this is technically overhead
+
+    selected_solution = SOLUTION_FUNCTIONS[SOL_LP]
+
+    return selected_solution(C)
+
+solution = solution_picker

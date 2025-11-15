@@ -23,8 +23,6 @@ from typing import Tuple, Dict
 
 from itertools import product
 
-from timer import profile
-
 def spawn_probability(C: Const, s: int) -> float:
     """Distance-dependent spawn probability p_spawn(s).
 
@@ -79,45 +77,10 @@ def is_collision(C: Const, y: int, d1: int, h1: int) -> bool:
     """
     return (d1 == 0) and not is_in_gap(C, y, h1)
 
-def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
-    """
-    Computes the state space and returns a state -> index dictionary
-    using a recursive, pruning-based generation method.
 
-    This function maintains the strict lexicographical ordering
-    from the problem statement, ensuring the state-to-index
-    mapping is identical to the original 'itertools.product' method,
-    but is significantly faster by pruning invalid branches early.
-    """
-
-    state_to_index_dict = {}
-    current_index = 0
-
-    # --- Cache constants from C for minor speedup ---
-    S_y, S_v = C.S_y, C.S_v
-    S_d, S_d1 = C.S_d, C.S_d1
-    S_h, S_h_default = C.S_h, C.S_h[0]
-    M, X_limit = C.M, C.X - 1
-
-    # Pre-build the two possible lists for H-options
-    h_options_all = S_h
-    h_options_default = [S_h_default]
-
-    # Pre build an empty D-options list
-    S_d0 = [0]
-
-
-    possible_h_iterables = [[h_options_all] + [h_options_all for i in range(1, M)]]
-    for spot0 in range(1, M):
-        possible_h_iterables.append([h_options_all] + [
-            h_options_default if i >= spot0 else h_options_all
-            for i in range(1, M)
-        ])
-    possible_h_iterables = [list(product(*h_iter)) for h_iter in possible_h_iterables]
-
+class CustomStateSpace:
     # ================== D-Vector Recursive Builder ==================
-    @profile
-    def _build_d_recursive(y, v, current_d_list, current_d_sum, d_index, spot0):
+    def build_d_recursive(self, y, v, current_d_list, current_d_sum, d_index, spot0):
         """
         Recursively builds the D-vector (d1, ..., dM) for a given
         (y, v) prefix.
@@ -128,33 +91,31 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
         - d2=0 if d1=0
         """
         # --- Base Case: D-vector is complete ---
-        if d_index == M:
+        if d_index == self.M:
             # D-vector is built, now start building the H-vector
-            nonlocal current_index
-
-            h_iterable = possible_h_iterables[spot0]
+            h_iterable = self.possible_h_iterables[spot0]
 
             prefix = (y, v) + tuple(current_d_list)
 
             # 2. Loop over the product of these allowed H-options
             for h_tuple in h_iterable:
                 state = prefix + h_tuple
-                state_to_index_dict[state] = current_index
-                current_index += 1
+                self.state_to_index_dict[state] = self.current_index
+                self.current_index += 1
 
             return
 
         # --- Recursive Step: Add d_i ---
         if d_index == 0:
-            d_options = S_d1
+            d_options = self.S_d1
         elif spot0 > 0:
-            d_options = S_d0
+            d_options = self.S_d0
         else:
-            d_options = S_d
+            d_options = self.S_d
 
         for d in d_options:
             # 1. Sum constraint
-            if current_d_sum + d > X_limit:
+            if current_d_sum + d > self.X_limit:
                 continue
 
             # 3. d1/d2 constraint (d1=0 -> d2>0)
@@ -171,7 +132,7 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
 
             # Recurse with the added d
             current_d_list[d_index] = d
-            _build_d_recursive(
+            self.build_d_recursive(
                 y, v,
                 current_d_list,
                 current_d_sum + d,
@@ -182,11 +143,47 @@ def custom_state_space(C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
                 next_spot0
             )
 
-    # The outer loops *must* be y, then v, to maintain order
-    for y in S_y:
-        for v in S_v:
-            current_d_list_for_v = [0] * M
-            # Start the recursion for the D-vector
-            _build_d_recursive(y, v, current_d_list_for_v, 0, 0, 0)
+    def custom_state_space(self, C: Const) -> Tuple[int, Dict[Tuple[int, ...], int]]:
+        """
+        Computes the state space and returns a state -> index dictionary
+        using a recursive, pruning-based generation method.
 
-    return len(state_to_index_dict), state_to_index_dict
+        This function maintains the strict lexicographical ordering
+        from the problem statement, ensuring the state-to-index
+        mapping is identical to the original 'itertools.product' method,
+        but is significantly faster by pruning invalid branches early.
+        """
+
+
+        self.state_to_index_dict = {}
+        self.current_index = 0
+
+        # --- Cache constants from C for minor speedup ---
+        self.S_y, self.S_v = C.S_y, C.S_v
+        self.S_d, self.S_d1 = C.S_d, C.S_d1
+        self.S_h, self.S_h_default = C.S_h, C.S_h[0]
+        self.M, self.X_limit = C.M, C.X - 1
+
+        # Pre-build the two possible lists for H-options
+        self.h_options_all = self.S_h
+        self.h_options_default = [self.S_h_default]
+
+        # Pre build an empty D-options list
+        self.S_d0 = [0]
+
+        possible_h_iterables = [[self.h_options_all] + [self.h_options_all for i in range(1, self.M)]]
+        for spot0 in range(1, self.M):
+            possible_h_iterables.append([self.h_options_all] + [
+                self.h_options_default if i >= spot0 else self.h_options_all
+                for i in range(1, self.M)
+            ])
+        self.possible_h_iterables = [list(product(*h_iter)) for h_iter in possible_h_iterables]
+
+        # The outer loops *must* be y, then v, to maintain order
+        for y in self.S_y:
+            for v in self.S_v:
+                current_d_list_for_v = [0] * self.M
+                # Start the recursion for the D-vector
+                self.build_d_recursive(y, v, current_d_list_for_v, 0, 0, 0)
+
+        return len(self.state_to_index_dict), self.state_to_index_dict

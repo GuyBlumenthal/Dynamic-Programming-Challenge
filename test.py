@@ -118,8 +118,5 @@ def main() -> None:
         run_test(test_nr)
     print("-----------")
 
-    from timer import time_evaluate
-    time_evaluate()
-
 if __name__ == "__main__":
     main()

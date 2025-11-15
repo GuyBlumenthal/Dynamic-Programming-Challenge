@@ -18,11 +18,8 @@ Institute for Dynamic Systems and Control
 import numpy as np
 from Const import Const
 
-from timer import time_def, profile
-
 from typing import Tuple
 
-@profile
 def compute_expected_stage_cost_solver(C: Const, K: int) -> Tuple[np.array, np.array]:
     costs_row = np.array([
         -1,                # Cost for action 0 (None)
