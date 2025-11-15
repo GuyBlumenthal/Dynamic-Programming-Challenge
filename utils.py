@@ -100,9 +100,10 @@ class CustomStateSpace:
             final_d_list = tuple(current_d_list)
             # 2. Loop over the product of these allowed H-options
             for h_tuple in h_iterable:
-                arr[*h_tuple] = self.current_index
-                self.valid_states_with_indices.append((y, v, final_d_list, h_tuple, self.current_index, spot0))
-                self.current_index += 1
+                global current_index
+                arr[*h_tuple] = current_index
+                self.valid_states_with_indices.append((y, v, final_d_list, h_tuple, current_index, spot0))
+                current_index += 1
 
             return        # --- Recursive Step: Add d_i ---
 
@@ -122,23 +123,27 @@ class CustomStateSpace:
             # d_index == 1 is d2
             if d_index == 1:
                 d1 = current_d_list[0]
-                d2 = d
-                if d1 <= 0 and d2 == 0:
+                if d1 == 0 and d == 0:
                     continue
 
-            next_spot0 = spot0
             if spot0 == 0 and d_index > 0 and d == 0:
-                next_spot0 = d_index  # This is the first zero
-
-            # Recurse with the added d
-            current_d_list[d_index] = d
-            self.build_d_recursive(
-                y, v,
-                current_d_list,
-                current_d_sum + d,
-                d_index + 1,
-                next_spot0
-            )
+                current_d_list[d_index] = d
+                self.build_d_recursive(
+                    y, v,
+                    current_d_list,
+                    current_d_sum + d,
+                    d_index + 1,
+                    d_index # This is the first zero
+                )
+            else:
+                current_d_list[d_index] = d
+                self.build_d_recursive(
+                    y, v,
+                    current_d_list,
+                    current_d_sum + d,
+                    d_index + 1,
+                    spot0 # Zero spot unchanged
+                )
 
     def custom_state_space(self, C: Const) -> Tuple[int, np.ndarray, list]:
         """
@@ -150,9 +155,9 @@ class CustomStateSpace:
         mapping is identical to the original 'itertools.product' method,
         but is significantly faster by pruning invalid branches early.
         """
+        global current_index
+        current_index = 0
 
-
-        self.current_index = 0
         self.valid_states_with_indices = []
 
         # --- Cache constants from C for minor speedup ---
@@ -196,4 +201,4 @@ class CustomStateSpace:
                 # Start the recursion for the D-vector
                 self.build_d_recursive(y, v, current_d_list_for_v, 0, 0, 0)
 
-        return self.current_index, self.state_to_index_array, self.valid_states_with_indices
+        return current_index, self.state_to_index_array, self.valid_states_with_indices
