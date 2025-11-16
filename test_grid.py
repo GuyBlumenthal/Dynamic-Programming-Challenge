@@ -189,11 +189,11 @@ def main():
             func_hits = timings[0][1]
             unit = lp.get_stats().unit
             runtime = ((total_time * unit)/func_hits)
-            json.dump({[{
+            json.dump([{
                 "name": "runtime",
                 "unit": "s",
                 "value": runtime
-            }]}, open("tests/profile_runtime.json", "w"))
+            }], open("tests/profile_runtime.json", "w"))
 
 if __name__ == "__main__":
     main()
