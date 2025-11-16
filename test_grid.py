@@ -143,32 +143,20 @@ def main():
     lp = LineProfiler()
 
     profiled_functions = [
-        CustomStateSpace.build_d_recursive,
-        CustomStateSpace.custom_state_space,
-        compute_expected_stage_cost_solver,
-        compute_transition_probabilities_sparse,
-        *SOLUTION_FUNCTIONS.values(),
+        solution,
     ]
 
     for func in profiled_functions:
         lp.add_callable(func)
 
-    setup="from test import main as challenge_main"
-    stmt="challenge_main()"
-    t = Timer(stmt=stmt, setup=setup)
-    # dur = t.timeit(number=iters) / iters
-
-    wrapper = lp(t.timeit)
-    wrapper(10)
-
-
-    # for test in tqdm(tests, desc="Test Progress"):
-    #     C = apply_overrides_and_instantiate(test)
-        # try:
-        #     wrapper = lp(solution)
-        #     wrapper(C)
-        # except Exception as e:
-        #     print(f"Failed for constant description of {test}")
+    for test in tqdm(tests, desc="Test Progress"):
+        C = apply_overrides_and_instantiate(test)
+        try:
+            wrapper = lp(solution)
+            wrapper(C)
+        except Exception as e:
+            print(f"Failed for constant description of {test}")
+            print(e)
 
 
     with open("tests/profile_output.txt", "w") as f:

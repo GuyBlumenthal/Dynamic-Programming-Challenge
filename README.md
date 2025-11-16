@@ -1,4 +1,6 @@
+# DPOC Challenge
 
+[![Performance](https://github.com/GuyBlumenthal/dpoc-challenge/actions/workflows/performance.yml/badge.svg)](https://github.com/GuyBlumenthal/dpoc-challenge/actions/workflows/performance.yml)
 
 ./env/bin/python /home/gblum/dev/dpc/profiler_timeit.py
 
