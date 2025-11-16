@@ -20,10 +20,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     - name: Run performance tests
+      id: performance
       run: |
-        python test_grid.py
+        python test_grid.py | tee output.log
+        echo "avg_time=$(tail -n 1 output.log)" >> $GITHUB_OUTPUT
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: performance-profile
+        name: performance-profile-${{ steps.performance.outputs.avg_time }}
         path: tests/profile_output.txt

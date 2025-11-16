@@ -161,7 +161,7 @@ def main():
     # dur = t.timeit(number=iters) / iters
 
     wrapper = lp(t.timeit)
-    wrapper(10)
+    wrapper(1)
 
     # for test in tqdm(tests, desc="Test Progress"):
     #     C = apply_overrides_and_instantiate(test)
@@ -178,5 +178,16 @@ def main():
 
     lp.dump_stats("tests/profile_output.pkl")
 
+    lp.get_stats()
+
+    # Show detailed per-line information for each function.
+    for (fn, lineno, name), timings in lp.get_stats().timings.items():
+        if name == "solution_linear_prog_sparse":
+            total_time = sum(t[2] for t in timings)
+            func_hits = timings[0][1]
+            unit = lp.get_stats().unit
+            print('%gs' % ((total_time * unit)/func_hits))
+
 if __name__ == "__main__":
     main()
+
