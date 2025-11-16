@@ -22,6 +22,8 @@ from utils import CustomStateSpace
 
 from test import main as challenge_main
 
+import json
+
 TEST_PARAM_RANGES = {
     "x": [6, 12],
 
@@ -186,7 +188,12 @@ def main():
             total_time = sum(t[2] for t in timings)
             func_hits = timings[0][1]
             unit = lp.get_stats().unit
-            print('%gs' % ((total_time * unit)/func_hits))
+            runtime = ((total_time * unit)/func_hits)
+            json.dump({[{
+                "name": "runtime",
+                "unit": "s",
+                "value": runtime
+            }]}, open("tests/profile_runtime.json", "w"))
 
 if __name__ == "__main__":
     main()

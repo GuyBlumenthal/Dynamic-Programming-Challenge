@@ -22,8 +22,7 @@ jobs:
     - name: Run performance tests
       id: performance
       run: |
-        python test_grid.py | tee output.log
-        echo "avg_time=$(tail -n 1 output.log)" >> output.txt
+        python test_grid.py
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
@@ -34,5 +33,5 @@ jobs:
       with:
         # Required: Path to the benchmark results file created in the previous step
         name: 'Performance'
-        output-file-path: output.txt
+        output-file-path: tests/profile_runtime.json
         tool: customSmallerIsBetter
