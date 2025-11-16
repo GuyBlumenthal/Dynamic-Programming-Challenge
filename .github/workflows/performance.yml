@@ -35,3 +35,4 @@ jobs:
         # Required: Path to the benchmark results file created in the previous step
         name: 'Performance'
         output-file-path: output.txt
+        tool: customSmallerIsBetter
