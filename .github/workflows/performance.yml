@@ -23,9 +23,15 @@ jobs:
       id: performance
       run: |
         python test_grid.py | tee output.log
-        echo "avg_time=$(tail -n 1 output.log)" >> $GITHUB_OUTPUT
+        echo "avg_time=$(tail -n 1 output.log)" >> output.txt
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: performance-profile-${{ steps.performance.outputs.avg_time }}
+        name: performance-profile
         path: tests/profile_output.txt
+    - name: Store and track benchmark results
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        # Required: Path to the benchmark results file created in the previous step
+        name: 'Performance'
+        output-file-path: output.txt
