@@ -4,3 +4,5 @@ log.txt
 *.stats
 profiler.txt
 profile_output_*
+profile_output.txt
+profile_output.pkl
