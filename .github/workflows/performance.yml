@@ -35,3 +35,4 @@ jobs:
         name: 'Performance'
         output-file-path: tests/profile_runtime.json
         tool: customSmallerIsBetter
+        github-token: ${{ secrets.GITHUB_TOKEN }}
