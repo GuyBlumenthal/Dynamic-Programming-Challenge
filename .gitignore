@@ -6,3 +6,4 @@ profiler.txt
 profile_output_*
 profile_output.txt
 profile_output.pkl
+tests/profile_runtime.json
