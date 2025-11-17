@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      deployments: write
+      contents: write
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python 3.11
@@ -36,3 +39,5 @@ jobs:
         output-file-path: tests/profile_runtime.json
         tool: customSmallerIsBetter
         github-token: ${{ secrets.GITHUB_TOKEN }}
+        # Push and deploy GitHub pages branch automatically
+        auto-push: true
