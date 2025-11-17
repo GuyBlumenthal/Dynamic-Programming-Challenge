@@ -163,7 +163,7 @@ def main():
     # dur = t.timeit(number=iters) / iters
 
     wrapper = lp(t.timeit)
-    wrapper(1)
+    wrapper(100)
 
     # for test in tqdm(tests, desc="Test Progress"):
     #     C = apply_overrides_and_instantiate(test)
