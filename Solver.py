@@ -149,6 +149,7 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
     A = vstack(A_blocks, format='csc')
 
     # 'highs' is the best for sparse problems
+    # TODO: Need to deal with situation there is no termination EVER! we need optimal actions?
     res = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0], method='highs')
 
     J_opt = res.x

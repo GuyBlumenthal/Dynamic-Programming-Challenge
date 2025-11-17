@@ -47,7 +47,7 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_array, K, va
     # Store variables once instead of recalculating
     Y_limit = C.Y - 1
     G_limit = (C.G - 1) / 2
-    X, D_min = C.X, C.D_min
+    X, D_min, D_min_1, X_D_min = C.X, C.D_min, C.D_min - 1, C.X - C.D_min
     V_max, g = C.V_max, C.g
     S_h, S_h_0 = C.S_h, C.S_h[0]
     p_height = 1 / len(S_h)
@@ -64,11 +64,9 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_array, K, va
     min_v = -V_max + min(C.input_space) + min(W_v) - g
 
     Y_LOOKUP = {y_v: min(Y_limit, max(0, y_v)) for y_v in range(0-V_max, Y_limit+V_max+1)}
-
     V_LOOKUP = {(v+g): min(V_max, max(-V_max, v)) for v in range(min_v, max_v+1)}
 
     for y_i, v_i, d_i, h_i, state_index, m_min in valid_states_with_indices:
-        y_j = Y_LOOKUP[y_i + v_i]
         if d_i[0] == 0: # Passing
             if abs(y_i - h_i[0]) > G_limit:
                 continue # Crash!
@@ -90,32 +88,31 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_array, K, va
             p_spawn = 1
             p_no_spawn = 0
         else:
-            p_spawn = (s - (D_min - 1)) / (X - D_min)
+            p_spawn = (s - D_min_1) / X_D_min
             p_no_spawn = 1 - p_spawn
 
         if p_spawn > 0:
-            spawn_array = state_to_index_array[y_j, :, *dhat_j[:m_min], s, *dhat_j[m_min+1:], *hhat_j[:m_min], :, *hhat_j[m_min+1:]]
+            spawn_array = state_to_index_array[Y_LOOKUP[y_i + v_i], :, *dhat_j[:m_min], s, *dhat_j[m_min+1:], *hhat_j[:m_min], :, *hhat_j[m_min+1:]]
 
         if p_no_spawn > 0:
-            no_spawn_array = state_to_index_array[y_j, :, *dhat_j, *hhat_j]
+            no_spawn_array = state_to_index_array[Y_LOOKUP[y_i + v_i], :, *dhat_j, *hhat_j]
 
         # Each input will push to a seperate index in coo_*
         # Important note: Duplicate entries will be SUMMED!
         # This means that we do not have to worry about two inputs resulting in the same next_state (See += in compute_transition_probabilities)
-        p_b = p_spawn * p_height
         for input_index, u_k, p_flap, W_v_list in U:
             p_a = p_flap * p_no_spawn
-            p_b = p_flap * p_b
+            p_b = p_flap * p_spawn * p_height
             for w_v in W_v_list:
                 v_j = V_LOOKUP[v_i + u_k + w_v]
 
                 # Case 1: No spawn
-                if p_no_spawn > 0:
-                    j_index = no_spawn_array[v_j]
+                # if p_no_spawn > 0:
+                j_index = no_spawn_array[v_j]
 
-                    append_data[input_index](p_a)
-                    append_rows[input_index](state_index)
-                    append_cols[input_index](j_index)
+                append_data[input_index](p_a)
+                append_rows[input_index](state_index)
+                append_cols[input_index](j_index)
 
                 # Case 2: Spawn
                 if p_spawn > 0:
