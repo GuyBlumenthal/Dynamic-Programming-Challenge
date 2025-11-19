@@ -136,12 +136,12 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_array, K, va
                 v_j = V_LOOKUP[v_i + u_k + w_v]
 
                 # Case 1: No spawn
-                # if p_no_spawn > 0:
-                j_index = no_spawn_array[v_j]
+                if p_no_spawn > 0:
+                    j_index = no_spawn_array[v_j]
 
-                # DIRECT ARRAY FILL - NO APPEND
-                data, row, col = next(buf_iter)
-                data[...], row[...], col[...] = p_a, state_index, j_index
+                    # DIRECT ARRAY FILL - NO APPEND
+                    data, row, col = next(buf_iter)
+                    data[...], row[...], col[...] = p_a, state_index, j_index
 
                 # Case 2: Spawn
                 if p_spawn > 0:
