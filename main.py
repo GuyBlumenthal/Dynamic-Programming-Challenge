@@ -25,18 +25,18 @@ from ComputeTransitionProbabilities import compute_transition_probabilities
 from ComputeExpectedStageCosts import compute_expected_stage_cost
 from Solver import solution
 import simulation
-from time import time_ns
+
 
 def main(use_solution_if_exist=True) -> None:
     """Main function to compute the optimal policy and run a simulation.
-
+    
     Args:
         use_solution_if_exist (bool): If True, tries to load an existing
             optimal policy from disk. If not found, computes it from scratch.
     """
     C = Const()
     u_opt = None
-
+    
     ws_dir = "workspaces"
     u_path = os.path.join(ws_dir, "u_opt.npy")
     os.makedirs(ws_dir, exist_ok=True)
@@ -45,8 +45,8 @@ def main(use_solution_if_exist=True) -> None:
         u_opt = np.load("workspaces/u_opt.npy")
         if len(u_opt)!=C.K:
             u_opt = None
-
-    if u_opt == None:
+    
+    if u_opt == None: 
         # Build P and Q
         print("Computing transition probabilities P ...")
         P = compute_transition_probabilities(C)
@@ -55,13 +55,11 @@ def main(use_solution_if_exist=True) -> None:
         print("Computing expected stage costs Q ...")
         Q = compute_expected_stage_cost(C)
         print(f"Q shape: {Q.shape}")
-
+        
         # Solve for optimal cost and policy
         print("Solving for optimal policy ...")
-        start_time = time_ns()
         J_opt, u_opt = solution(C)
-        end_time = time_ns()
-        print(f"Solution obtained. {(end_time - start_time) * 1e-6:.4f} ms")
+        print("Solution obtained.")
         print("J_opt (min/max):", float(np.min(J_opt)), float(np.max(J_opt)))
 
     # Run simulation

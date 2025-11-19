@@ -31,18 +31,45 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_array, K, va
     # Each action in C.input_space will have its own sparse probability matrix
     num_inputs = len(C.input_space)
 
-    # A calculated probability P[curr_state, next_state, action] is stored as
-    #   coo_data[action] = P[curr_state, next_state, action]
-    #   coo_cols[action] = curr_state
-    #   coo_rows[action] = next_state
-    coo_data = [[] for input_i in range(num_inputs)]
-    coo_cols = [[] for input_i in range(num_inputs)]
-    coo_rows = [[] for input_i in range(num_inputs)]
+    # 1. Estimate Max NNZ per input layer to pre-allocate memory.
+    # Max transitions: A state splits into multiple outcomes via wind (W_v) and spawn heights (S_h).
+    # Formula: K states * Max_Wind_Variations * Max_Spawn_Variations
+    max_branches = len(C.W_v) * len(C.S_h) + 2 # +2 for safety buffer
+    est_nnz = K * max_branches
 
-    # Helper functions for populating coo table
-    append_data = [l.append for l in coo_data]
-    append_rows = [l.append for l in coo_rows]
-    append_cols = [l.append for l in coo_cols]
+    # 2. Pre-allocate arrays. Use int32 for indices to save memory/bandwidth.
+    # We create a list of arrays, one set for each input action.
+    data_buf = [
+        np.zeros(est_nnz, dtype=np.float64)
+        for _ in range(num_inputs)
+    ]
+
+    rows_buf = [
+        np.zeros(est_nnz, dtype=np.int32)
+        for _ in range(num_inputs)
+    ]
+
+
+    cols_buf = [
+        np.zeros(est_nnz, dtype=np.int32)
+        for _ in range(num_inputs)
+    ]
+
+    bufs = [
+        (
+            data_buf[input_index],
+            rows_buf[input_index],
+            cols_buf[input_index],
+        ) for input_index in range(num_inputs)
+    ]
+
+    bufs_iters = [
+        zip(
+            np.nditer(data_buf[input_index], op_flags=['readwrite']),
+            np.nditer(rows_buf[input_index], op_flags=['readwrite']),
+            np.nditer(cols_buf[input_index], op_flags=['readwrite'])
+        ) for input_index in range(num_inputs)
+    ]
 
     # Store variables once instead of recalculating
     Y_limit = C.Y - 1
@@ -101,39 +128,41 @@ def compute_transition_probabilities_sparse(C:Const, state_to_index_array, K, va
         # Important note: Duplicate entries will be SUMMED!
         # This means that we do not have to worry about two inputs resulting in the same next_state (See += in compute_transition_probabilities)
         for input_index, u_k, p_flap, W_v_list in U:
+            buf_iter = bufs_iters[input_index]
+
             p_a = p_flap * p_no_spawn
             p_b = p_flap * p_spawn * p_height
             for w_v in W_v_list:
                 v_j = V_LOOKUP[v_i + u_k + w_v]
 
                 # Case 1: No spawn
-                if p_no_spawn > 0:
-                    j_index = no_spawn_array[v_j]
+                # if p_no_spawn > 0:
+                j_index = no_spawn_array[v_j]
 
-                    append_data[input_index](p_a)
-                    append_rows[input_index](state_index)
-                    append_cols[input_index](j_index)
+                # DIRECT ARRAY FILL - NO APPEND
+                data, row, col = next(buf_iter)
+                data[...], row[...], col[...] = p_a, state_index, j_index
 
                 # Case 2: Spawn
                 if p_spawn > 0:
                     for height in S_h:
                         j_index = spawn_array[v_j, height]
-
-                        append_data[input_index](p_b)
-                        append_rows[input_index](state_index)
-                        append_cols[input_index](j_index)
+                        data, row, col = next(buf_iter)
+                        data[...], row[...], col[...] = p_b, state_index, j_index
 
     # Construct the sparse matrices
     P_sparse_list = []
-    for l in range(C.L):
-        # Build as COO first (fastest for this input)
+    for l in range(num_inputs):
+        data, rows, cols = bufs[l]
+
+        # FAST: Creating coo_matrix from existing numpy arrays is O(1) pointer copy
         P_l_coo = coo_matrix(
-            (coo_data[l], (coo_rows[l], coo_cols[l])),
+            (data, (rows, cols)),
             shape=(K, K)
         )
-        # Convert to CSC (fast, sums duplicates)
-        P_l = P_l_coo.tocsc()
-        P_sparse_list.append(P_l)
+
+        # FAST: Summing duplicates happens here in C++
+        P_sparse_list.append(P_l_coo.tocsc())
 
     return P_sparse_list
 
