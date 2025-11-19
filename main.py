@@ -24,7 +24,6 @@ from Const import Const
 from ComputeTransitionProbabilities import compute_transition_probabilities
 from ComputeExpectedStageCosts import compute_expected_stage_cost
 from Solver import solution
-import simulation
 from time import time_ns
 
 def main(use_solution_if_exist=True) -> None:
@@ -48,24 +47,23 @@ def main(use_solution_if_exist=True) -> None:
 
     if u_opt == None:
         # Build P and Q
-        print("Computing transition probabilities P ...")
+        # print("Computing transition probabilities P ...")
         P = compute_transition_probabilities(C)
-        print(f"P shape: {P.shape}")
+        # print(f"P shape: {P.shape}")
 
-        print("Computing expected stage costs Q ...")
+        # print("Computing expected stage costs Q ...")
         Q = compute_expected_stage_cost(C)
-        print(f"Q shape: {Q.shape}")
+        # print(f"Q shape: {Q.shape}")
 
         # Solve for optimal cost and policy
-        print("Solving for optimal policy ...")
+        # print("Solving for optimal policy ...")
         start_time = time_ns()
         J_opt, u_opt = solution(C)
         end_time = time_ns()
-        print(f"Solution obtained. {(end_time - start_time) * 1e-6:.4f} ms")
-        print("J_opt (min/max):", float(np.min(J_opt)), float(np.max(J_opt)))
+        print(f"Total time {(end_time - start_time) * 1e-6:.4f} ms")
 
-    # Run simulation
-    simulation.run_simulation(C, policy=u_opt)
+    # # Run simulation
+    # simulation.run_simulation(C, policy=u_opt)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

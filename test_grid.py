@@ -156,7 +156,7 @@ def main():
         lp.add_callable(func)
 
 
-    setup="from test import main as challenge_main"
+    setup="from main import main as challenge_main"
     stmt="challenge_main()"
 
     t = Timer(stmt=stmt, setup=setup)

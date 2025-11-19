@@ -20,12 +20,15 @@ import numpy as np
 from scipy.optimize import linprog
 from scipy.sparse import csc_matrix, vstack, eye
 from Const import Const
+from time import time_ns
 
 from utils import CustomStateSpace
 
 from ComputeExpectedStageCosts import compute_expected_stage_cost_solver as compute_expected_stage_cost
 from ComputeExpectedStageCosts import compute_expected_stage_cost as compute_expected_stage_cost_old
 from ComputeTransitionProbabilities import compute_transition_probabilities_sparse as compute_transition_probabilities
+
+from ComputeTransitionProbabilities import compute_transition_probabilities as compute_transition_probabilities_solver
 
 def solution_template(C: Const) -> tuple[np.array, np.array]:
     """Computes the optimal cost and the optimal control policy.
@@ -129,7 +132,11 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
     J_opt = np.zeros(K)
     u_opt = np.zeros(K)
 
+    start_time = time_ns()
     P = compute_transition_probabilities(C, state_array, K, valid_states)
+    end_time = time_ns()
+    print(f"Probability calculation duration {(end_time - start_time) * 1e-6:.4f} ms")
+
     Q, b = compute_expected_stage_cost(C, K)
 
     c = np.full(K, -1, np.int64)
@@ -150,10 +157,15 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
 
     # 'highs' is the best for sparse problems
     # TODO: Need to deal with situation there is no termination EVER! we need optimal actions?
+    start_time = time_ns()
     res = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0], method='highs')
+    end_time = time_ns()
+    print(f"Solver duration {(end_time - start_time) * 1e-6:.4f} ms")
 
     J_opt = res.x
 
+
+    start_time = time_ns()
     # Create a list of weighted_J vectors, one for each action l
     weighted_J_cols = []
     for l in range(C.L):
@@ -161,6 +173,7 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
         # The @ operator performs efficient sparse-dot-dense
         weighted_J_l = P[l] @ J_opt  # Result is a (K,) dense vector
         weighted_J_cols.append(weighted_J_l)
+    end_time = time_ns()
 
     # Stack the (K,) vectors as columns into a (K, L) dense array
     weighted_J_all = np.stack(weighted_J_cols, axis=1)
@@ -193,7 +206,11 @@ def solution_value_iteration(C: Const, epsilon=1e-8, max_iter=10000) -> tuple[np
 
     ss = CustomStateSpace()
     K, state_array, valid_states = ss.custom_state_space(C)
+
+
     P = compute_transition_probabilities(C, state_array, K, valid_states)
+
+
     Q, _ = compute_expected_stage_cost(C, K)
 
     # 2. Initialize J (Value function)
