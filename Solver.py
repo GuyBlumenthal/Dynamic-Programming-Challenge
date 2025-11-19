@@ -126,18 +126,22 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
         np.array: The optimal control policy for the stochastic SPP,
             of shape (C.K,), where each entry is in {0,...,C.L-1}.
     """
+
+
+    start_time = time_ns()
     ss = CustomStateSpace()
     K, state_array, valid_states = ss.custom_state_space(C)
+    P = compute_transition_probabilities(C, state_array, K, valid_states)
+    end_time = time_ns()
+    print(f"Probability calculation duration \t{(end_time - start_time) * 1e-6:.4f} ms")
 
     J_opt = np.zeros(K)
     u_opt = np.zeros(K)
 
     start_time = time_ns()
-    P = compute_transition_probabilities(C, state_array, K, valid_states)
-    end_time = time_ns()
-    print(f"Probability calculation duration {(end_time - start_time) * 1e-6:.4f} ms")
-
     Q, b = compute_expected_stage_cost(C, K)
+    end_time = time_ns()
+    print(f"Stage cost duration \t\t\t{(end_time - start_time) * 1e-6:.4f} ms")
 
     c = np.full(K, -1, np.int64)
 
@@ -160,7 +164,7 @@ def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
     start_time = time_ns()
     res = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0], method='highs')
     end_time = time_ns()
-    print(f"Solver duration {(end_time - start_time) * 1e-6:.4f} ms")
+    print(f"Solver duration \t\t\t{(end_time - start_time) * 1e-6:.4f} ms")
 
     J_opt = res.x
 

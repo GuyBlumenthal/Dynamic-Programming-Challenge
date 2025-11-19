@@ -60,7 +60,7 @@ def main(use_solution_if_exist=True) -> None:
         start_time = time_ns()
         J_opt, u_opt = solution(C)
         end_time = time_ns()
-        print(f"Total time {(end_time - start_time) * 1e-6:.4f} ms")
+        print(f"Total time \t\t\t\t{(end_time - start_time) * 1e-6:.4f} ms")
 
     # # Run simulation
     # simulation.run_simulation(C, policy=u_opt)
