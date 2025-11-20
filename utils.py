@@ -442,3 +442,10 @@ def spawn_probability(C, s):
         return 1.0
     else:
         return (s - (C.D_min - 1)) / (C.X - C.D_min)
+
+def compute_expected_stage_cost_fast(C: Const, K: int):
+    return np.tile(np.array([
+        -1,                # Cost for action 0 (None)
+        C.lam_weak - 1,    # Cost for action 1 (Weak)
+        C.lam_strong - 1   # Cost for action 2 (Strong)
+    ]), (K, 1))

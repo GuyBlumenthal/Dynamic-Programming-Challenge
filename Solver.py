@@ -24,7 +24,7 @@ from Const import Const
 from ComputeTransitionProbabilities import compute_transition_probabilities
 from ComputeExpectedStageCosts import compute_expected_stage_cost
 
-from utils import compute_transition_probabilities_fast, build_A_fast_setup, build_A_fast, make_preconditioner, compute_transition_probabilities_vectorized
+from utils import compute_transition_probabilities_fast, compute_expected_stage_cost_fast, build_A_fast_setup, build_A_fast, make_preconditioner, compute_transition_probabilities_vectorized
 
 import time
 
@@ -41,10 +41,10 @@ def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
     del P_list
 
     T_end_time = time.perf_counter()
-
+    K = C.K
     print("Computing Stage Costs...")
     SC_start_time = time.perf_counter()
-    Q = compute_expected_stage_cost(C)
+    Q = compute_expected_stage_cost_fast(C, K)
     SC_end_time = time.perf_counter()
 
     # --- iGMRES & Solver Parameters ---
