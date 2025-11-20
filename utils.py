@@ -45,32 +45,6 @@ def make_preconditioner(A_csr, omega=0.8, inner_iters=3, dtype=np.float64):
 
     return spla.LinearOperator((K, K), matvec=apply_inner_iterations, dtype=dtype)
 
-def build_A(K, P_stack, policy, range_k, gamma, dtype=np.float64):
-    """
-    Constructs A = I - gamma * P_pi using vectorized slicing on a stacked P matrix.
-
-    Args:
-        K: State space size
-        P_stack: Vertically stacked P matrices (shape L*K, K)
-        policy: Array of shape (K,) containing actions
-        range_k: Pre-computed np.arange(K) for speed
-        gamma: Discount factor
-    """
-    # --- VECTORIZED SLICING ---
-    # We want the row from P corresponding to action policy[i] for state i.
-    # Since P_stack is stacked vertically, the row for state i and action l
-    # is located at index: (l * K) + i
-    selector_indices = policy * K + range_k
-
-    # Scipy CSR slicing is highly optimized in C.
-    # It extracts the specific rows into a new CSR matrix much faster
-    # than adding masked matrices in Python.
-    P_pi = P_stack[selector_indices, :]
-
-    I = sp.eye(K, format='csr', dtype=dtype)
-    A = I - gamma * P_pi
-    return A
-
 def build_A_fast_setup(K, L, P_stack, gamma, dtype=np.float64):
     I = sp.vstack(sp.eye(K, format='csr', dtype=dtype) for _ in range(L))
     A_all = I - gamma * P_stack
