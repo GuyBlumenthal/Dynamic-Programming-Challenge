@@ -1,0 +1,346 @@
+Timer unit: 1e-09 s
+
+Total time: 0.164267 s
+Average time: 0.164267 s
+File: /home/gblum/dev/DPOC_Exercise/Solver.py
+Function: solution at line 31
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    31                                           def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
+    32         1       3939.0   3939.0      0.0      Total_start = time.perf_counter()
+    33                                           
+    34         1      27744.0  27744.0      0.0      print("Computing Transition Probabilities... (fast)")
+    35         1       1021.0   1021.0      0.0      T_start_time = time.perf_counter()
+    36         1   23669689.0 2.37e+07     14.4      P_list = compute_transition_probabilities_vectorized(C)#compute_transition_probabilities_fast(C)
+    37                                           
+    38                                               # --- OPTIMIZATION: Pre-Stack P Matrices ---
+    39         1     323052.0 323052.0      0.2      P_stack = sp.vstack(P_list).tocsr()
+    40                                           
+    41         1       3106.0   3106.0      0.0      del P_list
+    42                                           
+    43         1       1683.0   1683.0      0.0      T_end_time = time.perf_counter()
+    44         1       4247.0   4247.0      0.0      K = C.K
+    45         1      18560.0  18560.0      0.0      print("Computing Stage Costs...")
+    46         1        468.0    468.0      0.0      SC_start_time = time.perf_counter()
+    47         1      85154.0  85154.0      0.1      Q = compute_expected_stage_cost_fast(C, K)
+    48         1      93066.0  93066.0      0.1      Q = compute_expected_stage_cost(C)
+    49         1        961.0    961.0      0.0      SC_end_time = time.perf_counter()
+    50                                           
+    51                                               # --- iGMRES & Solver Parameters ---
+    52         1       3514.0   3514.0      0.0      K, L = C.K, C.L
+    53         1        477.0    477.0      0.0      gamma = 1.0
+    54         1       1143.0   1143.0      0.0      dtype = np.float64
+    55                                           
+    56         1       4388.0   4388.0      0.0      J = np.zeros(K, dtype=dtype)
+    57         1       2720.0   2720.0      0.0      policy = np.zeros(K, dtype=int)
+    58                                           
+    59                                               # Tolerances
+    60         1        329.0    329.0      0.0      gmres_tol_max = 1e-5
+    61         1        349.0    349.0      0.0      gmres_tol_min = 1e-9
+    62         1        241.0    241.0      0.0      eta = 0.5
+    63         1        262.0    262.0      0.0      outer_tol = 1e-7
+    64                                           
+    65                                               # Iteration limits
+    66         1        275.0    275.0      0.0      max_outer_iters = 200
+    67         1        299.0    299.0      0.0      gmres_restart = 60
+    68         1        225.0    225.0      0.0      max_inner_iters = 15
+    69                                           
+    70         1        194.0    194.0      0.0      delta_J_prev = 1.0
+    71         1       8637.0   8637.0      0.0      range_k = np.arange(K, dtype=int) # Pre-compute for slicing
+    72                                           
+    73         1        483.0    483.0      0.0      start_time = time.perf_counter()
+    74                                           
+    75         1    1300710.0  1.3e+06      0.8      A_all = build_A_fast_setup(K, L, P_stack, gamma, dtype)
+    76                                           
+    77                                               # Begin iterations
+    78        26      12254.0    471.3      0.0      for outer_iter in range(max_outer_iters):
+    79        26     129871.0   4995.0      0.1          J_prev = J.copy()
+    80                                           
+    81                                                   # --- 1. Build A (Optimized) ---
+    82                                                   # A_sparse = build_A(K, P_stack, policy, range_k, gamma, dtype)
+    83        26   11387321.0 437973.9      6.9          A_sparse = build_A_fast(A_all, K, policy, range_k)
+    84                                           
+    85                                                   # --- 2. Preconditioner ---
+    86        26    3035927.0 116766.4      1.8          M = make_preconditioner(A_sparse, omega=0.8, inner_iters=3, dtype=dtype)
+    87                                           
+    88                                                   # Right-hand side
+    89        26    1474306.0  56704.1      0.9          b = Q[range_k, policy].astype(dtype)
+    90                                           
+    91                                                   # Adaptive GMRES Tolerance
+    92                                                   # If delta_J is large, we don't need a perfect linear solve yet.
+    93        26      12751.0    490.4      0.0          if outer_iter > 0:
+    94        25      25637.0   1025.5      0.0              tol_k = eta * delta_J_prev
+    95                                                   else:
+    96         1        265.0    265.0      0.0              tol_k = gmres_tol_max
+    97                                           
+    98        26      43755.0   1682.9      0.0          tol_k = min(max(tol_k, gmres_tol_min), gmres_tol_max)
+    99                                           
+   100                                                   # --- 3. Solve Linear System ---
+   101        26       8328.0    320.3      0.0          try:
+   102        52  113618717.0 2.18e+06     69.2              J_eval, info = spla.gmres(
+   103        26       9598.0    369.2      0.0                  A_sparse,
+   104        26       6299.0    242.3      0.0                  b,
+   105        26       7568.0    291.1      0.0                  x0=J,
+   106        26       6148.0    236.5      0.0                  tol=tol_k,
+   107        26       6703.0    257.8      0.0                  restart=gmres_restart,
+   108        26       6372.0    245.1      0.0                  maxiter=max_inner_iters,
+   109        26       5654.0    217.5      0.0                  M=M
+   110                                                       )
+   111        26      19760.0    760.0      0.0              if info != 0:
+   112                                                           J_eval = spla.spsolve(A_sparse, b)
+   113                                                   except Exception:
+   114                                                       J_eval = spla.spsolve(A_sparse, b)
+   115                                           
+   116                                                   # --- 4. Policy Improvement (Optimized) ---
+   117        26    2353040.0  90501.5      1.4          P_J_all = P_stack.dot(J_eval)
+   118                                           
+   119        26      69693.0   2680.5      0.0          expected_future_costs = P_J_all.reshape((L, K)).T
+   120                                           
+   121                                                   # Bellman update
+   122        26    2392819.0  92031.5      1.5          Q_J = Q + gamma * expected_future_costs
+   123                                           
+   124                                                   # Greedy improvement
+   125        26    2125910.0  81765.8      1.3          new_policy = np.argmin(Q_J, axis=1)
+   126                                           
+   127                                                   # Stats
+   128        26     948978.0  36499.2      0.6          policy_changes = np.sum(new_policy != policy)
+   129        26     842382.0  32399.3      0.5          delta_J = np.max(np.abs(J_eval - J_prev))
+   130                                           
+   131        26       9447.0    363.3      0.0          delta_J_prev = delta_J
+   132        26      20537.0    789.9      0.0          J = J_eval
+   133        26      20771.0    798.9      0.0          policy = new_policy
+   134                                           
+   135        26      48512.0   1865.8      0.0          if policy_changes == 0 and delta_J < outer_tol:
+   136         1      21036.0  21036.0      0.0              print(f"Converged in {outer_iter+1} iterations.")
+   137         1        573.0    573.0      0.0              break
+   138                                               else:
+   139                                                   print("Warning: Max outer iterations reached without convergence.")
+   140                                           
+   141         1       2426.0   2426.0      0.0      end_time = time.perf_counter()
+   142                                           
+   143         1        848.0    848.0      0.0      T_TP = T_end_time - T_start_time
+   144         1        383.0    383.0      0.0      T_SC = SC_end_time - SC_start_time
+   145         1        359.0    359.0      0.0      T_J = end_time - start_time
+   146         1        672.0    672.0      0.0      Total_time = time.perf_counter() - Total_start
+   147                                           
+   148         1       8187.0   8187.0      0.0      print("\n--- Timing Summary (Optimized with Slicing) ---")
+   149         1       9523.0   9523.0      0.0      print(f"Transition Probabilities: {T_TP:.6f}s")
+   150         1       5853.0   5853.0      0.0      print(f"Stage Costs:              {T_SC:.6f}s")
+   151         1       5280.0   5280.0      0.0      print(f"Policy Iteration:         {T_J:.6f}s")
+   152         1       4754.0   4754.0      0.0      print(f"Total Runtime:            {Total_time:.6f}s")
+   153                                           
+   154         1        603.0    603.0      0.0      return J, policy
+
+Total time: 0.0233418 s
+Average time: 0.0233418 s
+File: /home/gblum/dev/DPOC_Exercise/utils.py
+Function: compute_transition_probabilities_vectorized at line 232
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   232                                           def compute_transition_probabilities_vectorized(C):
+   233                                               """
+   234                                               Fully vectorized calculation of transition probabilities.
+   235                                               Strictly adheres to PE_instructions.pdf.
+   236                                           
+   237                                               Corrections Implemented:
+   238                                               1. Vertical Motion: y_{k+1} = y_k + v_k (Uses CURRENT velocity, not next).
+   239                                               2. Pipe Logic: Shifts happen first, decrement checks NEW state.
+   240                                               3. Spawn Probability: Exact linear ramp formula from PDF.
+   241                                               4. m_min Logic: Defaults to M-1 (last pipe) if buffer is full.
+   242                                               """
+   243                                           
+   244                                               # 1. Convert State Space to Matrix
+   245                                               # ---------------------------------------------------------
+   246         1    3231599.0 3.23e+06     13.8      S_arr = np.array(C.state_space, dtype=np.int32)
+   247         1       5173.0   5173.0      0.0      N = S_arr.shape[0]
+   248                                           
+   249                                               # Columns: Y, V, D[0]...D[M-1], H[0]...H[M-1]
+   250         1       4263.0   4263.0      0.0      Y = S_arr[:, 0]
+   251         1        970.0    970.0      0.0      V = S_arr[:, 1]
+   252         1      13188.0  13188.0      0.1      D = S_arr[:, 2 : 2 + C.M]
+   253         1       2866.0   2866.0      0.0      H = S_arr[:, 2 + C.M : 2 + 2 * C.M]
+   254                                           
+   255                                               # 2. Pre-process State Lookup (SearchSorted Trick)
+   256                                               # ------------------------------------------------------
+   257         1      24307.0  24307.0      0.1      dtype_view = np.dtype((np.void, S_arr.dtype.itemsize * S_arr.shape[1]))
+   258         1       7998.0   7998.0      0.0      S_void = np.ascontiguousarray(S_arr).view(dtype_view).ravel()
+   259         1     897594.0 897594.0      3.8      sort_order = np.argsort(S_void)
+   260         1      73808.0  73808.0      0.3      S_void_sorted = S_void[sort_order]
+   261                                           
+   262         1       3160.0   3160.0      0.0      def lookup_state_indices(next_states_matrix):
+   263                                                   next_void = np.ascontiguousarray(next_states_matrix.astype(np.int32)).view(dtype_view).ravel()
+   264                                                   search_indices = np.searchsorted(S_void_sorted, next_void)
+   265                                                   search_indices = np.clip(search_indices, 0, N - 1)
+   266                                                   found_void = S_void_sorted[search_indices]
+   267                                                   valid_mask = (found_void == next_void)
+   268                                                   return sort_order[search_indices], valid_mask
+   269                                           
+   270                                               # 3. Deterministic Pipe Dynamics (Per PDF "Dynamics" section)
+   271                                               # -----------------------------------------------------------
+   272                                           
+   273                                               # A. Collision check
+   274                                               # "On collision... transition to a cost-free termination state"
+   275                                               # We identify these source states and ensure they generate NO transitions in P
+   276                                               # (effectively making them absorbing or exiting the set).
+   277         1       5813.0   5813.0      0.0      if C.M > 0:
+   278         1       2000.0   2000.0      0.0          gap_tol = (C.G - 1) // 2
+   279         1     122619.0 122619.0      0.5          is_collided = (D[:, 0] == 0) & (np.abs(Y - H[:, 0]) > gap_tol)
+   280                                               else:
+   281                                                   is_collided = np.zeros(N, dtype=bool)
+   282                                           
+   283         1      53310.0  53310.0      0.2      Hat_D = D.copy()
+   284         1      50267.0  50267.0      0.2      Hat_H = H.copy()
+   285                                           
+   286         1       2706.0   2706.0      0.0      if C.M > 0:
+   287                                                   # B. Intermediate Quantities
+   288                                                   # Case 1: Passing (d[1]=0, no collision). Logic: Shift indices left.
+   289         1      11079.0  11079.0      0.0          mask_passing = (D[:, 0] == 0)
+   290                                           
+   291         1       1435.0   1435.0      0.0          if C.M > 1:
+   292                                                       # Shift indices 2..M to 1..M-1 (Python indices 1..M-1 to 0..M-2)
+   293         1     117357.0 117357.0      0.5              Hat_D[mask_passing, :-1] = D[mask_passing, 1:]
+   294         1      59264.0  59264.0      0.3              Hat_H[mask_passing, :-1] = H[mask_passing, 1:]
+   295                                           
+   296                                                   # Set last element to 0 / default height
+   297         1      32504.0  32504.0      0.1          Hat_D[mask_passing, C.M-1] = 0
+   298         1       2160.0   2160.0      0.0          if len(C.S_h) > 0:
+   299         1      31956.0  31956.0      0.1              Hat_H[mask_passing, C.M-1] = C.S_h[0]
+   300                                           
+   301                                                   # C. Drift Decrement
+   302                                                   # For "Normal Drift" (d[1] > 0), hat_d = d - 1.
+   303                                                   # For "Passing", hat_d[1] = d[2] - 1.
+   304                                                   # Since we already shifted d[2] into position 0 for passing states,
+   305                                                   # we simply decrement Hat_D[0] wherever it is > 0.
+   306         1       9700.0   9700.0      0.0          mask_dec = (Hat_D[:, 0] > 0)
+   307         1     125872.0 125872.0      0.5          Hat_D[mask_dec, 0] -= 1
+   308                                           
+   309                                               # 4. Spawn Parameter Calculation
+   310                                               # -----------------------------------------------
+   311         1     176804.0 176804.0      0.8      sum_hat_D = np.sum(Hat_D, axis=1)
+   312         1      15139.0  15139.0      0.1      s_values = (C.X - 1) - sum_hat_D
+   313                                           
+   314                                               # PDF Formula for p_spawn(s) implemented vectorized
+   315                                               # s <= Dmin - 1: 0
+   316                                               # Dmin <= s <= X - 1: linear ramp
+   317                                               # s >= X: 1
+   318         1       5447.0   5447.0      0.0      numerator = s_values - (C.D_min - 1)
+   319         1       2178.0   2178.0      0.0      denominator = float(C.X - C.D_min)
+   320         1      45404.0  45404.0      0.2      p_linear = numerator / denominator
+   321         1      30314.0  30314.0      0.1      p_spawn_vec = np.clip(p_linear, 0.0, 1.0)
+   322                                           
+   323                                               # Find m_min: "smallest index with no assigned obstacle"
+   324                                               # Python indices 1..M-1. If none, default to M-1.
+   325         1      26162.0  26162.0      0.1      k_spawn_indices = np.full(N, C.M - 1, dtype=int)
+   326                                           
+   327         1       4206.0   4206.0      0.0      if C.M > 1:
+   328         1      10038.0  10038.0      0.0          search_view = Hat_D[:, 1:]
+   329         1      13468.0  13468.0      0.1          is_zero_view = (search_view == 0)
+   330         1      93432.0  93432.0      0.4          first_zero_rel = np.argmax(is_zero_view, axis=1)
+   331         1      35269.0  35269.0      0.2          any_zero_found = np.any(is_zero_view, axis=1)
+   332         1      67678.0  67678.0      0.3          k_spawn_indices[any_zero_found] = first_zero_rel[any_zero_found] + 1
+   333                                           
+   334                                               # 5. Iterate Inputs & Build Matrix
+   335                                               # --------------------------------
+   336         1       2182.0   2182.0      0.0      prob_h_new = 1.0 / len(C.S_h) if len(C.S_h) > 0 else 0.0
+   337         1       9227.0   9227.0      0.0      U_array = np.array(C.input_space)
+   338                                           
+   339         1       7638.0   7638.0      0.0      P_data = [[] for _ in range(C.L)]
+   340         1       3977.0   3977.0      0.0      P_rows = [[] for _ in range(C.L)]
+   341         1       3913.0   3913.0      0.0      P_cols = [[] for _ in range(C.L)]
+   342                                           
+   343         4      14596.0   3649.0      0.1      for l_idx, u in enumerate(U_array):
+   344                                                   # Probabilistic Velocities
+   345         3       4506.0   1502.0      0.0          if u == C.U_strong:
+   346         1       5516.0   5516.0      0.0              W_flap = np.arange(-C.V_dev, C.V_dev + 1)
+   347                                                   else:
+   348         2       4323.0   2161.5      0.0              W_flap = np.array([0])
+   349         3       3102.0   1034.0      0.0          prob_flap = 1.0 / len(W_flap)
+   350         3       1611.0    537.0      0.0          n_w = len(W_flap)
+   351                                           
+   352                                                   # Broadcast V + u + W (Calculates v_{k+1})
+   353         3     449598.0 149866.0      1.9          V_next_matrix = V[:, None] + u + W_flap[None, :] - C.g
+   354         3     201953.0  67317.7      0.9          V_next_flat = np.clip(V_next_matrix, -C.V_max, C.V_max).flatten()
+   355                                           
+   356                                                   # Calculate y_{k+1} based on CURRENT velocity v_k (PDF Page 5 formula)
+   357                                                   # y_{k+1} = min(max(y_k + v_k, 0), Y-1)
+   358                                                   # We repeat Y and V (current) to match the shape of the expanded arrays
+   359         3     149872.0  49957.3      0.6          Y_repeated = np.repeat(Y, n_w)
+   360         3     100869.0  33623.0      0.4          V_current_repeated = np.repeat(V, n_w)
+   361         3     302143.0 100714.3      1.3          Y_next_flat = np.clip(Y_repeated + V_current_repeated, 0, C.Y - 1).astype(np.int32)
+   362                                           
+   363                                                   # Source filtering (Collided states are dead ends)
+   364         3     265332.0  88444.0      1.1          source_idxs = np.repeat(np.arange(N), n_w)
+   365         3     154473.0  51491.0      0.7          valid_src = ~np.repeat(is_collided, n_w)
+   366                                           
+   367         3     136984.0  45661.3      0.6          V_next = V_next_flat[valid_src]
+   368         3      77389.0  25796.3      0.3          Y_next = Y_next_flat[valid_src]
+   369         3     214811.0  71603.7      0.9          source_idxs = source_idxs[valid_src]
+   370                                           
+   371                                                   # Get pre-computed pipe params for valid rows
+   372         3     580521.0 193507.0      2.5          Hat_D_sub = Hat_D[source_idxs]
+   373         3     516012.0 172004.0      2.2          Hat_H_sub = Hat_H[source_idxs]
+   374         3     106518.0  35506.0      0.5          p_spawn_sub = p_spawn_vec[source_idxs]
+   375         3      76862.0  25620.7      0.3          k_spawn_sub = k_spawn_indices[source_idxs]
+   376                                           
+   377                                                   # --- Path 1: No Spawn ---
+   378         3     180263.0  60087.7      0.8          probs_ns = prob_flap * (1.0 - p_spawn_sub)
+   379         3      42642.0  14214.0      0.2          mask_ns = probs_ns > 0
+   380                                           
+   381         3      91703.0  30567.7      0.4          if np.any(mask_ns):
+   382         3    2213448.0 737816.0      9.5              NS_states = np.column_stack((Y_next[mask_ns], V_next[mask_ns], Hat_D_sub[mask_ns], Hat_H_sub[mask_ns]))
+   383         3    4316229.0 1.44e+06     18.5              dest_idx, valid = lookup_state_indices(NS_states)
+   384                                           
+   385         3       2256.0    752.0      0.0              keep = valid
+   386         3      78564.0  26188.0      0.3              P_rows[l_idx].append(source_idxs[mask_ns][keep])
+   387         3      28941.0   9647.0      0.1              P_cols[l_idx].append(dest_idx[keep])
+   388         3     112852.0  37617.3      0.5              P_data[l_idx].append(probs_ns[mask_ns][keep])
+   389                                           
+   390                                                   # --- Path 2: Spawn ---
+   391         3      34693.0  11564.3      0.1          mask_s = (p_spawn_sub > 0)
+   392                                           
+   393         3      73924.0  24641.3      0.3          if np.any(mask_s) and len(C.S_h) > 0:
+   394         3      25229.0   8409.7      0.1              S_Y = Y_next[mask_s]
+   395         3      29644.0   9881.3      0.1              S_V = V_next[mask_s]
+   396         3     152687.0  50895.7      0.7              S_D = Hat_D_sub[mask_s]
+   397         3     141705.0  47235.0      0.6              S_H = Hat_H_sub[mask_s]
+   398         3      29071.0   9690.3      0.1              S_k = k_spawn_sub[mask_s]
+   399         3      43364.0  14454.7      0.2              S_base_prob = prob_flap * p_spawn_sub[mask_s]
+   400                                           
+   401                                                       # Calculate s to fill (re-computed for flattened subset)
+   402         3     120621.0  40207.0      0.5              S_sum_d = np.sum(S_D, axis=1)
+   403         3      49570.0  16523.3      0.2              s_fill = np.clip((C.X - 1) - S_sum_d, C.D_min, C.X - 1)
+   404                                           
+   405                                                       # Iterate over all possible new heights (uniform prob)
+   406        12      10474.0    872.8      0.0              for h_new in C.S_h:
+   407         9      22699.0   2522.1      0.1                  D_new = S_D.copy()
+   408         9      13329.0   1481.0      0.1                  H_new = S_H.copy()
+   409         9      35344.0   3927.1      0.2                  rows = np.arange(len(S_Y))
+   410                                           
+   411                                                           # Assign new pipe to the identified slot
+   412         9     102396.0  11377.3      0.4                  D_new[rows, S_k] = s_fill
+   413         9      83180.0   9242.2      0.4                  H_new[rows, S_k] = h_new
+   414                                           
+   415         9     459069.0  51007.7      2.0                  S_states = np.column_stack((S_Y, S_V, D_new, H_new))
+   416         9    2497098.0 277455.3     10.7                  dest_idx, valid = lookup_state_indices(S_states)
+   417                                           
+   418         9       9280.0   1031.1      0.0                  keep = valid
+   419         9     149579.0  16619.9      0.6                  P_rows[l_idx].append(source_idxs[mask_s][keep])
+   420         9      27567.0   3063.0      0.1                  P_cols[l_idx].append(dest_idx[keep])
+   421         9      78693.0   8743.7      0.3                  P_data[l_idx].append(S_base_prob[keep] * prob_h_new)
+   422                                           
+   423                                               # 6. Construct Sparse Matrices
+   424         1        675.0    675.0      0.0      P_sparse = []
+   425         4       9900.0   2475.0      0.0      for l in range(C.L):
+   426         3       2789.0    929.7      0.0          if len(P_data[l]) > 0:
+   427         3     190808.0  63602.7      0.8              data = np.concatenate(P_data[l])
+   428         3     152637.0  50879.0      0.7              rows = np.concatenate(P_rows[l])
+   429         3     153073.0  51024.3      0.7              cols = np.concatenate(P_cols[l])
+   430         3    2758886.0 919628.7     11.8              P_l = sp.csr_matrix((data, (rows, cols)), shape=(C.K, C.K))
+   431         3       4217.0   1405.7      0.0              P_sparse.append(P_l)
+   432                                                   else:
+   433                                                       P_sparse.append(sp.csr_matrix((C.K, C.K)))
+   434                                           
+   435         1        287.0    287.0      0.0      return P_sparse
+
