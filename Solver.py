@@ -24,22 +24,22 @@ from Const import Const
 from ComputeTransitionProbabilities import compute_transition_probabilities
 from ComputeExpectedStageCosts import compute_expected_stage_cost
 
-from utils import compute_transition_probabilities_fast, build_A, make_preconditioner, compute_transition_probabilities_vectorized
+from utils import compute_transition_probabilities_fast, build_A_fast_setup, build_A_fast, make_preconditioner, compute_transition_probabilities_vectorized
 
 import time
 
-def solution(C: Const) -> tuple[np.ndarray, np.ndarray]: 
+def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
     Total_start = time.perf_counter()
 
     print("Computing Transition Probabilities... (fast)")
     T_start_time = time.perf_counter()
     P_list = compute_transition_probabilities_vectorized(C)#compute_transition_probabilities_fast(C)
-    
+
     # --- OPTIMIZATION: Pre-Stack P Matrices ---
     P_stack = sp.vstack(P_list).tocsr()
-    
-    del P_list 
-    
+
+    del P_list
+
     T_end_time = time.perf_counter()
 
     print("Computing Stage Costs...")
@@ -53,7 +53,7 @@ def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
     dtype = np.float64
 
     J = np.zeros(K, dtype=dtype)
-    policy = np.zeros(K, dtype=int)  
+    policy = np.zeros(K, dtype=int)
 
     # Tolerances
     gmres_tol_max = 1e-5
@@ -65,18 +65,21 @@ def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
     max_outer_iters = 200
     gmres_restart = 60
     max_inner_iters = 15
-    
+
     delta_J_prev = 1.0
     range_k = np.arange(K, dtype=int) # Pre-compute for slicing
 
     start_time = time.perf_counter()
+
+    A_all = build_A_fast_setup(K, L, P_stack, gamma, dtype)
 
     # Begin iterations
     for outer_iter in range(max_outer_iters):
         J_prev = J.copy()
 
         # --- 1. Build A (Optimized) ---
-        A_sparse = build_A(K, P_stack, policy, range_k, gamma, dtype)
+        # A_sparse = build_A(K, P_stack, policy, range_k, gamma, dtype)
+        A_sparse = build_A_fast(A_all, K, policy, range_k)
 
         # --- 2. Preconditioner ---
         M = make_preconditioner(A_sparse, omega=0.8, inner_iters=3, dtype=dtype)
@@ -90,7 +93,7 @@ def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
             tol_k = eta * delta_J_prev
         else:
             tol_k = gmres_tol_max
-            
+
         tol_k = min(max(tol_k, gmres_tol_min), gmres_tol_max)
 
         # --- 3. Solve Linear System ---
@@ -111,9 +114,9 @@ def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
 
         # --- 4. Policy Improvement (Optimized) ---
         P_J_all = P_stack.dot(J_eval)
-        
+
         expected_future_costs = P_J_all.reshape((L, K)).T
-        
+
         # Bellman update
         Q_J = Q + gamma * expected_future_costs
 

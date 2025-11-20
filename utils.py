@@ -71,6 +71,19 @@ def build_A(K, P_stack, policy, range_k, gamma, dtype=np.float64):
     A = I - gamma * P_pi
     return A
 
+def build_A_fast_setup(K, L, P_stack, gamma, dtype=np.float64):
+    I = sp.vstack(sp.eye(K, format='csr', dtype=dtype) for _ in range(L))
+    A_all = I - gamma * P_stack
+    return A_all
+
+def build_A_fast(A_all, K, policy, range_k):
+    # --- VECTORIZED SLICING ---
+    # We want the row from P corresponding to action policy[i] for state i.
+    # Since P_stack is stacked vertically, the row for state i and action l
+    # is located at index: (l * K) + i
+    selector_indices = policy * K + range_k
+    return A_all[selector_indices, :]
+
 def spawn_probability(C: Const, s: int) -> float:
     """Distance-dependent spawn probability p_spawn(s).
 
