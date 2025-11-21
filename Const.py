@@ -229,8 +229,8 @@ class ConstMod:
         V_max: int,
         # Inputs
         U_no_flap: int,
-        U_weak: int = 2,
-        U_strong: int = 3,
+        U_weak: int,
+        U_strong: int,
         # Wind/Disturbance
         V_dev: int,
         # Obstacle parameters
