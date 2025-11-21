@@ -231,208 +231,251 @@ def compute_transition_probabilities_fast(C: Const):
 
 def compute_transition_probabilities_vectorized(C):
     """
-    Fully vectorized calculation of transition probabilities.
-    Strictly adheres to PE_instructions.pdf.
-
-    Corrections Implemented:
-    1. Vertical Motion: y_{k+1} = y_k + v_k (Uses CURRENT velocity, not next).
-    2. Pipe Logic: Shifts happen first, decrement checks NEW state.
-    3. Spawn Probability: Exact linear ramp formula from PDF.
-    4. m_min Logic: Defaults to M-1 (last pipe) if buffer is full.
+    Optimized transition probability calculation using Coordinate Hashing.
+    
+    Improvements:
+    1. Coordinate Hashing: Maps (y, v, d, h) -> Integer Index in O(1).
+       Replaces np.searchsorted (O(N log N)).
+    2. Vectorized Physics: Strictly follows PDF dynamics (Collision, Spawning, Motion).
     """
 
-    # 1. Convert State Space to Matrix
+    # 1. Parse State Space & Setup Hashing
     # ---------------------------------------------------------
     S_arr = np.array(C.state_space, dtype=np.int32)
     N = S_arr.shape[0]
+    num_cols = S_arr.shape[1]
 
-    # Columns: Y, V, D[0]...D[M-1], H[0]...H[M-1]
+    # Calculate ranges and strides for Perfect Hashing
+    # We map every state to a unique integer: Hash = Sum( (val - min) * stride )
+    mins = S_arr.min(axis=0)
+    maxs = S_arr.max(axis=0)
+    ranges = maxs - mins + 1
+    
+    # Compute strides (column-major-like logic, but order doesn't matter as long as consistent)
+    strides = np.zeros(num_cols, dtype=np.int64)
+    current_stride = 1
+    for i in range(num_cols):
+        strides[i] = current_stride
+        current_stride *= ranges[i]
+
+    # Total size of the dense lookup table
+    table_size = current_stride
+    
+    # Safety Check: If table is > 100MB (approx 25M entries), warn or fallback.
+    # For Flappy Bird, table_size is usually < 5,000,000 (20MB), which is fine.
+    
+    # Create the lookup table
+    # lookup_table[hash] = index_in_state_space
+    lookup_table = np.full(table_size, -1, dtype=np.int32)
+    
+    # Compute hashes for all existing valid states
+    # Formula: sum((S_arr[:, i] - mins[i]) * strides[i])
+    state_hashes = np.dot((S_arr - mins), strides)
+    lookup_table[state_hashes] = np.arange(N, dtype=np.int32)
+
+    # Helper for O(1) Lookup
+    def get_state_indices(next_states):
+        # 1. Check bounds (vectorized)
+        # Any state component outside [min, max] is invalid
+        valid_bounds = np.all((next_states >= mins) & (next_states <= maxs), axis=1)
+        
+        indices = np.full(next_states.shape[0], -1, dtype=np.int32)
+        
+        if np.any(valid_bounds):
+            # 2. Compute Hashes
+            # Subset only valid bounds to avoid overflow/segfaults on hash calculation
+            valid_states = next_states[valid_bounds]
+            hashes = np.dot((valid_states - mins), strides)
+            
+            # 3. Lookup
+            # Since we checked bounds, hashes are guaranteed < table_size
+            found_indices = lookup_table[hashes]
+            indices[valid_bounds] = found_indices
+            
+        # Return indices and a boolean mask of which ones were found
+        mask_found = (indices != -1)
+        return indices[mask_found], mask_found
+
+    # 2. Pre-process State Columns
+    # ---------------------------------------------------------
     Y = S_arr[:, 0]
     V = S_arr[:, 1]
     D = S_arr[:, 2 : 2 + C.M]
     H = S_arr[:, 2 + C.M : 2 + 2 * C.M]
 
-    # 2. Pre-process State Lookup (SearchSorted Trick)
-    # ------------------------------------------------------
-    dtype_view = np.dtype((np.void, S_arr.dtype.itemsize * S_arr.shape[1]))
-    S_void = np.ascontiguousarray(S_arr).view(dtype_view).ravel()
-    sort_order = np.argsort(S_void)
-    S_void_sorted = S_void[sort_order]
-
-    def lookup_state_indices(next_states_matrix):
-        next_void = np.ascontiguousarray(next_states_matrix.astype(np.int32)).view(dtype_view).ravel()
-        search_indices = np.searchsorted(S_void_sorted, next_void)
-        search_indices = np.clip(search_indices, 0, N - 1)
-        found_void = S_void_sorted[search_indices]
-        valid_mask = (found_void == next_void)
-        return sort_order[search_indices], valid_mask
-
-    # 3. Deterministic Pipe Dynamics (Per PDF "Dynamics" section)
-    # -----------------------------------------------------------
-
-    # A. Collision check
-    # "On collision... transition to a cost-free termination state"
-    # We identify these source states and ensure they generate NO transitions in P
-    # (effectively making them absorbing or exiting the set).
+    # Collision Logic (PDF: "transition to a cost-free termination state")
+    # We treat these as absorbing (rows of 0 in P), effectively removing them from the game flow.
     if C.M > 0:
         gap_tol = (C.G - 1) // 2
+        # Collision if inside pipe horizontally (D=0) AND outside gap vertically
         is_collided = (D[:, 0] == 0) & (np.abs(Y - H[:, 0]) > gap_tol)
     else:
         is_collided = np.zeros(N, dtype=bool)
 
+    # 3. Deterministic Pipe Dynamics (Pre-calculated)
+    # ---------------------------------------------------------
     Hat_D = D.copy()
     Hat_H = H.copy()
 
     if C.M > 0:
-        # B. Intermediate Quantities
-        # Case 1: Passing (d[1]=0, no collision). Logic: Shift indices left.
+        # Mask: Pipes that are currently at x=0 (Passing/Recycling)
         mask_passing = (D[:, 0] == 0)
-
+        
+        # Shift pipes left
         if C.M > 1:
-            # Shift indices 2..M to 1..M-1 (Python indices 1..M-1 to 0..M-2)
             Hat_D[mask_passing, :-1] = D[mask_passing, 1:]
             Hat_H[mask_passing, :-1] = H[mask_passing, 1:]
-
-        # Set last element to 0 / default height
+        
+        # Reset last pipe (will be filled by spawn logic if applicable)
         Hat_D[mask_passing, C.M-1] = 0
         if len(C.S_h) > 0:
-            Hat_H[mask_passing, C.M-1] = C.S_h[0]
+            Hat_H[mask_passing, C.M-1] = C.S_h[0] # Default height
 
-        # C. Drift Decrement
-        # For "Normal Drift" (d[1] > 0), hat_d = d - 1.
-        # For "Passing", hat_d[1] = d[2] - 1.
-        # Since we already shifted d[2] into position 0 for passing states,
-        # we simply decrement Hat_D[0] wherever it is > 0.
+        # Decrement horizontal distance (Drift)
+        # Only decrement if not just reset (checked by > 0)
         mask_dec = (Hat_D[:, 0] > 0)
         Hat_D[mask_dec, 0] -= 1
 
-    # 4. Spawn Parameter Calculation
-    # -----------------------------------------------
+    # Spawn Probability Logic (Linear Ramp)
     sum_hat_D = np.sum(Hat_D, axis=1)
-    s_values = (C.X - 1) - sum_hat_D
-
-    # PDF Formula for p_spawn(s) implemented vectorized
-    # s <= Dmin - 1: 0
-    # Dmin <= s <= X - 1: linear ramp
-    # s >= X: 1
+    s_values = (C.X - 1) - sum_hat_D # Free space
+    
+    # p = (s - (Dmin-1)) / (X - Dmin)
     numerator = s_values - (C.D_min - 1)
     denominator = float(C.X - C.D_min)
-    p_linear = numerator / denominator
-    p_spawn_vec = np.clip(p_linear, 0.0, 1.0)
-
-    # Find m_min: "smallest index with no assigned obstacle"
-    # Python indices 1..M-1. If none, default to M-1.
+    p_spawn_vec = np.clip(numerator / denominator, 0.0, 1.0)
+    
+    # Identify which pipe index 'k' to spawn into (first available slot)
     k_spawn_indices = np.full(N, C.M - 1, dtype=int)
-
     if C.M > 1:
-        search_view = Hat_D[:, 1:]
-        is_zero_view = (search_view == 0)
-        first_zero_rel = np.argmax(is_zero_view, axis=1)
-        any_zero_found = np.any(is_zero_view, axis=1)
-        k_spawn_indices[any_zero_found] = first_zero_rel[any_zero_found] + 1
+        # Find first column where D=0
+        is_zero = (Hat_D[:, 1:] == 0)
+        any_zero = np.any(is_zero, axis=1)
+        first_zero = np.argmax(is_zero, axis=1)
+        k_spawn_indices[any_zero] = first_zero[any_zero] + 1
 
-    # 5. Iterate Inputs & Build Matrix
-    # --------------------------------
+    # 4. Input Loop & Matrix Construction
+    # ---------------------------------------------------------
     prob_h_new = 1.0 / len(C.S_h) if len(C.S_h) > 0 else 0.0
     U_array = np.array(C.input_space)
+    
+    P_sparse_list = []
 
-    P_data = [[] for _ in range(C.L)]
-    P_rows = [[] for _ in range(C.L)]
-    P_cols = [[] for _ in range(C.L)]
-
-    for l_idx, u in enumerate(U_array):
-        # Probabilistic Velocities
+    for u in U_array:
+        # Initialize Coordinate Lists for Sparse Matrix
+        rows_list = []
+        cols_list = []
+        data_list = []
+        
+        # Resolve Flap/Wind randomness
         if u == C.U_strong:
             W_flap = np.arange(-C.V_dev, C.V_dev + 1)
         else:
             W_flap = np.array([0])
+        
         prob_flap = 1.0 / len(W_flap)
         n_w = len(W_flap)
 
-        # Broadcast V + u + W (Calculates v_{k+1})
+        # Vectorized Next State Calculation
+        # v_{k+1} = v_k + u + w - g
+        # Broadcast: (N, 1) + scalar + (1, n_w) -> (N, n_w)
         V_next_matrix = V[:, None] + u + W_flap[None, :] - C.g
         V_next_flat = np.clip(V_next_matrix, -C.V_max, C.V_max).flatten()
-
-        # Calculate y_{k+1} based on CURRENT velocity v_k (PDF Page 5 formula)
-        # y_{k+1} = min(max(y_k + v_k, 0), Y-1)
-        # We repeat Y and V (current) to match the shape of the expanded arrays
+        
+        # y_{k+1} = y_k + v_k (Note: Uses CURRENT v_k)
         Y_repeated = np.repeat(Y, n_w)
-        V_current_repeated = np.repeat(V, n_w)
-        Y_next_flat = np.clip(Y_repeated + V_current_repeated, 0, C.Y - 1).astype(np.int32)
-
-        # Source filtering (Collided states are dead ends)
-        source_idxs = np.repeat(np.arange(N), n_w)
-        valid_src = ~np.repeat(is_collided, n_w)
-
-        V_next = V_next_flat[valid_src]
-        Y_next = Y_next_flat[valid_src]
-        source_idxs = source_idxs[valid_src]
-
-        # Get pre-computed pipe params for valid rows
-        Hat_D_sub = Hat_D[source_idxs]
-        Hat_H_sub = Hat_H[source_idxs]
-        p_spawn_sub = p_spawn_vec[source_idxs]
-        k_spawn_sub = k_spawn_indices[source_idxs]
-
-        # --- Path 1: No Spawn ---
+        V_curr_repeated = np.repeat(V, n_w)
+        Y_next_flat = np.clip(Y_repeated + V_curr_repeated, 0, C.Y - 1).astype(np.int32)
+        
+        # Filter Collided Sources (They don't transition)
+        source_idxs_base = np.repeat(np.arange(N), n_w)
+        valid_src_mask = ~np.repeat(is_collided, n_w)
+        
+        # Apply mask
+        V_next = V_next_flat[valid_src_mask]
+        Y_next = Y_next_flat[valid_src_mask]
+        src_idxs = source_idxs_base[valid_src_mask]
+        
+        # Get pipe state for these sources
+        Hat_D_sub = Hat_D[src_idxs]
+        Hat_H_sub = Hat_H[src_idxs]
+        p_spawn_sub = p_spawn_vec[src_idxs]
+        
+        # --- PATH A: NO SPAWN ---
+        # Prob = prob_flap * (1 - p_spawn)
         probs_ns = prob_flap * (1.0 - p_spawn_sub)
         mask_ns = probs_ns > 0
-
+        
         if np.any(mask_ns):
-            NS_states = np.column_stack((Y_next[mask_ns], V_next[mask_ns], Hat_D_sub[mask_ns], Hat_H_sub[mask_ns]))
-            dest_idx, valid = lookup_state_indices(NS_states)
+            # Construct Next States Matrix
+            NS_states = np.column_stack((
+                Y_next[mask_ns], 
+                V_next[mask_ns], 
+                Hat_D_sub[mask_ns], 
+                Hat_H_sub[mask_ns]
+            ))
+            
+            # FAST LOOKUP via Hashing
+            dest_idxs, found = get_state_indices(NS_states)
+            
+            if len(dest_idxs) > 0:
+                rows_list.append(src_idxs[mask_ns][found])
+                cols_list.append(dest_idxs)
+                data_list.append(probs_ns[mask_ns][found])
 
-            keep = valid
-            P_rows[l_idx].append(source_idxs[mask_ns][keep])
-            P_cols[l_idx].append(dest_idx[keep])
-            P_data[l_idx].append(probs_ns[mask_ns][keep])
-
-        # --- Path 2: Spawn ---
+        # --- PATH B: SPAWN ---
         mask_s = (p_spawn_sub > 0)
-
         if np.any(mask_s) and len(C.S_h) > 0:
+            # Subset for spawn calculations
             S_Y = Y_next[mask_s]
             S_V = V_next[mask_s]
+            S_src = src_idxs[mask_s]
             S_D = Hat_D_sub[mask_s]
             S_H = Hat_H_sub[mask_s]
-            S_k = k_spawn_sub[mask_s]
+            S_k = k_spawn_indices[src_idxs][mask_s]
+            
+            # Base probability for this branch
             S_base_prob = prob_flap * p_spawn_sub[mask_s]
+            
+            # Calculate 's' distance to fill
+            # s = X - 1 - sum(d)
+            S_s_fill = np.clip((C.X - 1) - np.sum(S_D, axis=1), C.D_min, C.X - 1)
 
-            # Calculate s to fill (re-computed for flattened subset)
-            S_sum_d = np.sum(S_D, axis=1)
-            s_fill = np.clip((C.X - 1) - S_sum_d, C.D_min, C.X - 1)
-
-            # Iterate over all possible new heights (uniform prob)
+            # Iterate over possible new heights (Uniform probability)
             for h_new in C.S_h:
+                # Construct new pipe arrays
                 D_new = S_D.copy()
                 H_new = S_H.copy()
-                rows = np.arange(len(S_Y))
-
-                # Assign new pipe to the identified slot
-                D_new[rows, S_k] = s_fill
-                H_new[rows, S_k] = h_new
-
+                
+                # Update the specific pipe k
+                row_indices = np.arange(len(S_Y))
+                D_new[row_indices, S_k] = S_s_fill
+                H_new[row_indices, S_k] = h_new
+                
+                # Construct State Matrix
                 S_states = np.column_stack((S_Y, S_V, D_new, H_new))
-                dest_idx, valid = lookup_state_indices(S_states)
+                
+                # FAST LOOKUP
+                dest_idxs, found = get_state_indices(S_states)
+                
+                if len(dest_idxs) > 0:
+                    rows_list.append(S_src[found])
+                    cols_list.append(dest_idxs)
+                    # p = base_prob * (1/|Sh|)
+                    data_list.append(S_base_prob[found] * prob_h_new)
 
-                keep = valid
-                P_rows[l_idx].append(source_idxs[mask_s][keep])
-                P_cols[l_idx].append(dest_idx[keep])
-                P_data[l_idx].append(S_base_prob[keep] * prob_h_new)
-
-    # 6. Construct Sparse Matrices
-    P_sparse = []
-    for l in range(C.L):
-        if len(P_data[l]) > 0:
-            data = np.concatenate(P_data[l])
-            rows = np.concatenate(P_rows[l])
-            cols = np.concatenate(P_cols[l])
-            P_l = sp.csr_matrix((data, (rows, cols)), shape=(C.K, C.K))
-            P_sparse.append(P_l)
+        # Build CSR Matrix for this input u
+        if len(data_list) > 0:
+            data = np.concatenate(data_list)
+            rows = np.concatenate(rows_list)
+            cols = np.concatenate(cols_list)
+            P_mat = sp.csr_matrix((data, (rows, cols)), shape=(C.K, C.K))
         else:
-            P_sparse.append(sp.csr_matrix((C.K, C.K)))
+            P_mat = sp.csr_matrix((C.K, C.K))
+            
+        P_sparse_list.append(P_mat)
 
-    return P_sparse
+    return P_sparse_list
 
 # Keeping this purely for reference, though logic is now inlined for performance
 def spawn_probability(C, s):
