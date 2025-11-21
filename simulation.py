@@ -368,7 +368,7 @@ if __name__ == "__main__":
     from Solver import solution
     from ComputeTransitionProbabilities import compute_transition_probabilities
     from ComputeExpectedStageCosts import compute_expected_stage_cost
-        
+    from Const import ConstMod
         
     J_opt, u_opt = solution(default_C)
     
