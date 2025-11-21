@@ -216,10 +216,10 @@ class Const:
 class ConstMod:
     """Class containing all problem constants.
     
-    Modified so that all constants are instance variables initialized 
-    via arguments in __init__.
+    Modified so that all constants are mandatory instance variables 
+    initialized via arguments in __init__.
     """
-    
+
     def __init__(
         self,
         # Grid dimensions
@@ -239,32 +239,11 @@ class ConstMod:
         S_h: List[int],
         # Gravity
         g: int,
-        # Max obstacles (M)
-        M: int,
         # Costs
         lam_weak: float,
         lam_strong: float
     ):
-        """Initialize the constants with custom parameters.
-        
-        Args:
-            X (int): Number of columns (X) of the grid.
-            Y (int): Number of rows (Y) of the grid.
-            V_max (int): Vertical velocity bound.
-            U_no_flap (int): No upward impulse input.
-            U_weak (int): Weak upward impulse input.
-            U_strong (int): Strong upward impulse input.
-            V_dev (int): Strong flap altitude deviation bound.
-            D_min (int): Minimum spacing between obstacles.
-            G (int): Gap size.
-            S_h (List[int]): Set of admissible gap centers h_i. 
-                             Defaults to [5, 9, 13] if None.
-            g (int): Gravity.
-            M (int): Maximum number of obstacles. 
-                     If None, calculated as ceil(X / D_min).
-            lam_weak (float): Cost factor on weak input effort.
-            lam_strong (float): Cost factor on strong input effort.
-        """
+        """Initialize the constants. All arguments are mandatory."""
         
         # ----- Grid & Physics -----
         self.X = X
@@ -279,87 +258,53 @@ class ConstMod:
         
         self.D_min = D_min
         self.G = G
-        
-        # Handle mutable default argument for S_h
-        if S_h is None:
-            self.S_h = [5, 9, 13]
-        else:
-            self.S_h = S_h
-            
+        self.S_h = S_h
         self.g = g
         
-        # Handle M (Calculated property in original, now an argument with default calculation)
-        if M is None:
-            self._M = ceil(self.X / self.D_min)
-        else:
-            self._M = M
-            
         # ----- Cost -----
         self.lam_weak = lam_weak
         self.lam_strong = lam_strong
 
+        # Internal cache storage
+        self._state_space = None
+        self._state_indexing = None
+
+    @property
+    def M(self) -> int:
+        """Maximum number of obstacles on the grid.
+        Calculated dynamically based on X and D_min.
+        """
+        return ceil(self.X / self.D_min)
+
     @property
     def S_d1(self) -> List[int]:
-        """Set of admissible distances d1.
-        
-        Returns:
-            List[int]: list of admissible distances
-        """
+        """Set of admissible distances d1."""
         return list(range(self.X))
     
     @property
     def S_d(self) -> List[int]:
-        """Set of admissible distances d (for d2,...,dM).
-        
-        Returns:
-            List[int]: list of admissible distances
-        """
+        """Set of admissible distances d (for d2,...,dM)."""
         return [0] + list(range(self.D_min, self.X))
- 
+
     @property
     def S_y(self) -> List[int]:
-        """Set of admissible vertical positions y.
-        
-        Returns:
-            List[int]: list of admissible vertical positions
-        """
+        """Set of admissible vertical positions y."""
         return list(range(self.Y))
- 
+
     @property
     def S_v(self) -> List[int]:
-        """Set of admissible vertical velocities v.
-        
-        Returns:
-            List[int]: list of admissible vertical velocities
-        """
+        """Set of admissible vertical velocities v."""
         return list(range(-self.V_max, self.V_max + 1))
- 
+
     @property
     def W_v(self) -> List[int]:
-        """Set of admissible flap disturbances w_flap.
-        
-        Returns:
-            List[int]: list of admissible flap disturbances
-        """
+        """Set of admissible flap disturbances w_flap."""
         return list(range(-self.V_dev, self.V_dev + 1))
- 
-    @property
-    def M(self) -> int:
-        """Maximum number of obstacles on the grid.
-        
-        Returns:
-            int: maximum number of obstacles
-        """
-        return self._M
     
     @property
     def state_space(self) -> List[Tuple[int, ...]]:
-        """Returns the full state space as a list of tuples.
-        
-        Returns:
-            List[Tuple[int, ...]]: list of admissible states
-        """
-        if not hasattr(self, '_state_space'):
+        """Returns the full state space as a list of tuples."""
+        if self._state_space is None:
             # Caching
             iterables = (
                 [self.S_y, self.S_v, self.S_d1]
@@ -370,70 +315,45 @@ class ConstMod:
                 tuple(x) for x in product(*iterables) if self.is_valid_state(x)
             ]
         return self._state_space
- 
+
     def state_to_index(self, x: Tuple[int, ...]) -> int:
-        """Get index of state x = (y, v, d1, d2, ..., dM, h1, h2, ..., hM).
-        
-        Args:
-            x: state tuple (y, v, d1, d2, ..., dM, h1, h2, ..., hM)
-        
-        Returns:
-            int: index of state x in state_space
-        """
-        if not hasattr(self, '_state_indexing'):
+        """Get index of state x."""
+        if self._state_indexing is None:
             # Caching
             index: dict[Tuple[int, ...], int] = {}
             for idx, s in enumerate(self.state_space):
                 index[s] = idx
             self._state_indexing = index
+            
         if self.is_valid_state(x):
             return self._state_indexing[x]
         raise KeyError(f"[ERROR] state {x} does not exist in state_space.")
- 
+
     @property
     def K(self) -> int:
-        """Returns the size of the state space.
-        
-        Returns:
-            int: size of state space
-        """
+        """Returns the size of the state space."""
         return len(self.state_space)
- 
+
     @property
     def input_space(self) -> List[int]:
-        """Returns the full input space as a list.
-        
-        Returns:
-            List[int]: list of admissible inputs
-        """
+        """Returns the full input space as a list."""
         return [self.U_no_flap, self.U_weak, self.U_strong]
     
     @property
     def L(self) -> int:
-        """Returns the size of the input space.
-        
-        Returns:
-            int: size of input space
-        """
+        """Returns the size of the input space."""
         return len(self.input_space)
- 
+
     def is_valid_state(self, x):
-        """Checks if state s is valid for our statespace.
-        
-        Args:
-            x: state tuple (y, v, d1, d2, ..., dM, h1, h2, ..., hM)
- 
-        Returns:
-            bool: True if state is valid, False otherwise
-        """
- 
+        """Checks if state s is valid for our statespace."""
         D = list(x[2 : 2 + self.M])
         H = list(x[2 + self.M :])
         
         if sum(D) > self.X - 1:
             return False
- 
-        if D[1] == 0 and D[0] <= 0:
+
+        # Guard against Index Error if parameters result in M=1
+        if self.M > 1 and D[1] == 0 and D[0] <= 0:
             return False
         
         if D[0] not in self.S_d1:
@@ -444,7 +364,7 @@ class ConstMod:
         
         if any(h not in self.S_h for h in H):
             return False
- 
+
         if any(d == 0 and h != self.S_h[0] for d, h in zip(D[1:], H[1:])):
             return False
         
