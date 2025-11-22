@@ -23,7 +23,7 @@ import argparse
 from Const import Const
 from ComputeTransitionProbabilities import compute_transition_probabilities
 from ComputeExpectedStageCosts import compute_expected_stage_cost
-from Solver import solution
+from Solver import solution, generate_state_space
 import simulation
 
 from line_profiler import LineProfiler
@@ -48,24 +48,25 @@ def main(use_solution_if_exist=True) -> None:
         u_opt = np.load("workspaces/u_opt.npy")
         if len(u_opt)!=C.K:
             u_opt = None
-            
-    profiler = False
+
+    profiler = True
 
     if u_opt == None:
         # Build P and Q
-        print("Computing transition probabilities P ...")
-        P = compute_transition_probabilities(C)
-        print(f"P shape: {P.shape}")
+        # print("Computing transition probabilities P ...")
+        # P = compute_transition_probabilities(C)
+        # print(f"P shape: {P.shape}")
 
-        print("Computing expected stage costs Q ...")
-        Q = compute_expected_stage_cost(C)
-        print(f"Q shape: {Q.shape}")
+        # print("Computing expected stage costs Q ...")
+        # Q = compute_expected_stage_cost(C)
+        # print(f"Q shape: {Q.shape}")
 
         # Solve for optimal cost and policy
         if profiler:
             print("Solving for optimal policy ...")
             lp = LineProfiler()
             lp.add_callable(compute_transition_probabilities_vectorized)
+            lp.add_callable(generate_state_space)
             wrapper = lp(solution)
             J_opt, u_opt = wrapper(C)
             # J_opt, u_opt = solution(C)

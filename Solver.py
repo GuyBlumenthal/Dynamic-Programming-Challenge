@@ -28,6 +28,139 @@ from ComputeExpectedStageCosts import compute_expected_stage_cost
 
 import time
 
+from itertools import product
+class CustomStateSpace:
+    # ================== D-Vector Recursive Builder ==================
+    def build_d_recursive(self, y, v, current_d_list, current_d_sum, d_index, spot0):
+        """
+        Recursively builds the D-vector (d1, ..., dM) for a given
+        (y, v) prefix.
+
+        Pruning:
+        - sum(d) > X-1
+        - Trailing zeros (if d_i=0, all d_j for j>i must be 0)
+        - d2=0 if d1=0
+        """
+        # --- Base Case: D-vector is complete ---
+        if d_index == self.M:
+            # D-vector is built, now start building the H-vector
+            h_iterable = self.possible_h_iterables[spot0]
+
+            prefix = (y, v) + tuple(current_d_list)
+
+            # 2. Loop over the product of these allowed H-options
+            for h_tuple in h_iterable:
+                state = prefix + h_tuple
+                self.valid_states_with_indices[self.current_index, :] = state
+                self.current_index += 1
+
+            return        # --- Recursive Step: Add d_i ---
+        if d_index == 0:
+            d_options = self.S_d1
+        elif spot0 > 0:
+            d_options = self.S_d0
+        else:
+            d_options = self.S_d
+
+        for d in d_options:
+            # 1. Sum constraint
+            if current_d_sum + d > self.X_limit:
+                continue
+
+            # 3. d1/d2 constraint (d1=0 -> d2>0)
+            # d_index == 1 is d2
+            if d_index == 1:
+                d1 = current_d_list[0]
+                d2 = d
+                if d1 <= 0 and d2 == 0:
+                    continue
+
+            next_spot0 = spot0
+            if spot0 == 0 and d_index > 0 and d == 0:
+                next_spot0 = d_index  # This is the first zero
+
+            # Recurse with the added d
+            current_d_list[d_index] = d
+            self.build_d_recursive(
+                y, v,
+                current_d_list,
+                current_d_sum + d,
+                d_index + 1,
+                # Update zero_seen flag:
+                # (zero_seen is True if it was already True, OR
+                # if we are adding a zero *after* d1)
+                next_spot0
+            )
+
+    def custom_state_space(self, C: Const):
+        """
+        Computes the state space and returns a state -> index dictionary
+        using a recursive, pruning-based generation method.
+
+        This function maintains the strict lexicographical ordering
+        from the problem statement, ensuring the state-to-index
+        mapping is identical to the original 'itertools.product' method,
+        but is significantly faster by pruning invalid branches early.
+        """
+
+
+        self.current_index = 0
+
+        # --- Cache constants from C for minor speedup ---
+        self.S_y, self.S_v = C.S_y, C.S_v
+        self.S_d, self.S_d1 = C.S_d, C.S_d1
+        self.S_h, self.S_h_default = C.S_h, C.S_h[0]
+        self.M, self.X_limit = C.M, C.X - 1
+
+        # --- Create mappings for non-contiguous state variables ---
+        self.v_offset = C.V_max
+
+        # --- Initialize state_to_index_array ---
+        dims = [C.Y, 2 * C.V_max + 1]
+        for _ in range(self.M):
+            dims.append(C.X) # d values are 0..X-1
+        for _ in range(self.M):
+            dims.append(C.Y) # h values are 0..Y-1
+
+        self.state_to_index_array = np.full(dims, -1, dtype=np.int32)
+
+        d = (np.prod(dims), 2 + 2 * self.M)
+        self.valid_states_with_indices = np.zeros(d, dtype=np.int32)
+
+
+        # Pre-build the two possible lists for H-options
+        self.h_options_all = self.S_h
+        self.h_options_default = [self.S_h_default]
+
+        # Pre build an empty D-options list
+        self.S_d0 = [0]
+
+        possible_h_iterables = [[self.h_options_all] + [self.h_options_all for i in range(1, self.M)]]
+        for spot0 in range(1, self.M):
+            possible_h_iterables.append([self.h_options_all] + [
+                self.h_options_default if i >= spot0 else self.h_options_all
+                for i in range(1, self.M)
+            ])
+        self.possible_h_iterables = [list(product(*h_iter)) for h_iter in possible_h_iterables]
+
+        # The outer loops *must* be y, then v, to maintain order
+        for y in self.S_y:
+            for v in self.S_v:
+                current_d_list_for_v = [0] * self.M
+                # Start the recursion for the D-vector
+                self.build_d_recursive(y, v, current_d_list_for_v, 0, 0, 0)
+
+        return self.current_index, self.valid_states_with_indices[:self.current_index, :]
+
+def generate_state_space(C):
+    css = CustomStateSpace()
+    K, S_arr = css.custom_state_space(C)
+
+    # Or
+    K, S_arr = K, np.array(C.state_space, dtype=np.int32)
+
+    return K, S_arr
+
 def make_preconditioner(A_csr, omega=0.8, inner_iters=3, dtype=np.float64):
     """
     Same as before (kept).
@@ -60,7 +193,7 @@ def build_A_fast(A_all, K, policy, range_k):
     selector_indices = policy * K + range_k
     return A_all[selector_indices, :]
 
-def compute_transition_probabilities_vectorized(C):
+def compute_transition_probabilities_vectorized(C, K, S_arr):
     """
     Optimized transition probability calculation using Coordinate Hashing.
 
@@ -72,7 +205,6 @@ def compute_transition_probabilities_vectorized(C):
 
     # 1. Parse State Space & Setup Hashing
     # ---------------------------------------------------------
-    S_arr = np.array(C.state_space, dtype=np.int32)
     N = S_arr.shape[0]
     num_cols = S_arr.shape[1]
 
@@ -300,9 +432,9 @@ def compute_transition_probabilities_vectorized(C):
             data = np.concatenate(data_list)
             rows = np.concatenate(rows_list)
             cols = np.concatenate(cols_list)
-            P_mat = sp.csr_matrix((data, (rows, cols)), shape=(C.K, C.K))
+            P_mat = sp.csr_matrix((data, (rows, cols)), shape=(K, K))
         else:
-            P_mat = sp.csr_matrix((C.K, C.K))
+            P_mat = sp.csr_matrix((K, K))
 
         P_sparse_list.append(P_mat)
 
@@ -334,7 +466,9 @@ def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
     T_start = time.perf_counter()
 
     # 1. Compute P matrices
-    P_list = compute_transition_probabilities_vectorized(C)
+    K, S_arr = generate_state_space(C)
+    P_list = compute_transition_probabilities_vectorized(C, K, S_arr)
+    L = C.L
 
     # 2. Stack P: Shape (L * K, K)
     P_stack = sp.vstack(P_list).tocsr()
@@ -342,11 +476,10 @@ def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
     T_end = time.perf_counter()
 
     print("Computing Stage Costs...")
-    Q = compute_expected_stage_cost_fast(C, C.K)
+    Q = compute_expected_stage_cost_fast(C, K)
 
     # 2. Solver Parameters & Pre-calculation
     # -----------------------------------------------------
-    K, L = C.K, C.L
     gamma = 1.0
     dtype = np.float64
 
