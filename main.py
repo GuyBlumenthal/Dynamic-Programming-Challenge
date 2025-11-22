@@ -27,7 +27,7 @@ from Solver import solution
 import simulation
 
 from line_profiler import LineProfiler
-from utils import compute_transition_probabilities_vectorized
+from Solver import compute_transition_probabilities_vectorized
 import time
 
 def main(use_solution_if_exist=True) -> None:
@@ -48,6 +48,8 @@ def main(use_solution_if_exist=True) -> None:
         u_opt = np.load("workspaces/u_opt.npy")
         if len(u_opt)!=C.K:
             u_opt = None
+            
+    profiler = False
 
     if u_opt == None:
         # Build P and Q
@@ -60,16 +62,21 @@ def main(use_solution_if_exist=True) -> None:
         print(f"Q shape: {Q.shape}")
 
         # Solve for optimal cost and policy
-        print("Solving for optimal policy ...")
-        lp = LineProfiler()
-        lp.add_callable(compute_transition_probabilities_vectorized)
-        wrapper = lp(solution)
-        J_opt, u_opt = wrapper(C)
-        # J_opt, u_opt = solution(C)
-        with open(f"extended_testing/profiles/profile_{time.strftime('%H_%M_%S')}.txt", 'w') as f:
-            lp.print_stats(f)
-        print("Solution obtained.")
-        print("J_opt (min/max):", float(np.min(J_opt)), float(np.max(J_opt)))
+        if profiler:
+            print("Solving for optimal policy ...")
+            lp = LineProfiler()
+            lp.add_callable(compute_transition_probabilities_vectorized)
+            wrapper = lp(solution)
+            J_opt, u_opt = wrapper(C)
+            # J_opt, u_opt = solution(C)
+            with open(f"extended_testing/profiles/profile_{time.strftime('%H_%M_%S')}.txt", 'w') as f:
+                lp.print_stats(f)
+            print("Solution obtained.")
+            print("J_opt (min/max):", float(np.min(J_opt)), float(np.max(J_opt)))
+        else:
+            J_opt, u_opt = solution(C)
+            print("Solution obtained.")
+            print("J_opt (min/max):", float(np.min(J_opt)), float(np.max(J_opt)))
 
     # Run simulation
     # simulation.run_simulation(C, policy=u_opt)
