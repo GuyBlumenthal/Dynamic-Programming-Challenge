@@ -468,7 +468,7 @@ def solver_PI(K, L, P, Q):
     gamma = 1.0
     dtype = np.float64
 
-    print("Pre-calculating System Matrices (A_all)...")
+    log("Pre-calculating System Matrices (A_all)...")
     # --- OPTIMIZATION: Build A_all once ---
     A_all = build_A_fast_setup(K, L, P, gamma, dtype)
 
@@ -543,11 +543,11 @@ def solver_PI(K, L, P, Q):
         policy = new_policy
 
         if policy_changes == 0 and delta_J < outer_tol:
-            print(f"Converged in {outer_iter+1} iterations.")
+            log(f"Converged in {outer_iter+1} iterations.")
             break
 
         if outer_iter == max_outer_iters - 1:
-            print("Warning: Max outer iterations reached without convergence.")
+            log("Warning: Max outer iterations reached without convergence.")
 
     return J, policy
 
