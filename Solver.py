@@ -20,6 +20,8 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
+from scipy.optimize import linprog
+
 from Const import Const
 from ComputeTransitionProbabilities import compute_transition_probabilities
 from ComputeExpectedStageCosts import compute_expected_stage_cost
@@ -464,13 +466,13 @@ def compute_expected_stage_cost_fast(C: Const, K: int):
     ]), (K, 1))
 
 
-def solver_PI(K, L, P, Q):
+def solver_PI(C, K, L, P_list, P_stack, Q):
     gamma = 1.0
     dtype = np.float64
 
     log("Pre-calculating System Matrices (A_all)...")
     # --- OPTIMIZATION: Build A_all once ---
-    A_all = build_A_fast_setup(K, L, P, gamma, dtype)
+    A_all = build_A_fast_setup(K, L, P_stack, gamma, dtype)
 
     # Initialization
     J = np.zeros(K, dtype=dtype)
@@ -526,7 +528,7 @@ def solver_PI(K, L, P, Q):
 
         # --- F. Policy Improvement ---
         # P.dot(J) calculates costs for ALL actions in one go
-        P_J_all = P.dot(J_eval)
+        P_J_all = P_stack.dot(J_eval)
 
         # Reshape to (L, K) -> Transpose to (K, L)
         future_costs = P_J_all.reshape((L, K)).T
@@ -551,13 +553,52 @@ def solver_PI(K, L, P, Q):
 
     return J, policy
 
-def solver_LP(C, K, S_arr):
-    pass
+def solver_LP(C, K, L, P_list, P_stack, Q):
+    b = Q.flatten(order='F')
+
+    c = np.full(K, -1, np.int64)
+
+    # 1. Create a sparse identity matrix
+    I_sparse = sp.eye(K, format='csc')
+
+    # 2. Create a list to hold the sparse blocks (I - P_l)
+    A_blocks = []
+
+    # 3. Loop over all actions
+    for l in range(L):
+        # Add the sparse (I - P_l) block to our list
+        A_blocks.append(I_sparse - P_list[l])
+
+    # 4. Stack all blocks vertically into one sparse matrix
+    A = sp.vstack(A_blocks, format='csc')
+
+    res = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0], method='highs')
+
+    J_opt = res.x
+
+    # Create a list of weighted_J vectors, one for each action l
+    weighted_J_cols = []
+    for l in range(L):
+        # P[l] is (K, K) sparse, J_opt is (K,) dense
+        # The @ operator performs efficient sparse-dot-dense
+        weighted_J_l = P_list[l] @ J_opt  # Result is a (K,) dense vector
+        weighted_J_cols.append(weighted_J_l)
+
+    # Stack the (K,) vectors as columns into a (K, L) dense array
+    weighted_J_all = np.stack(weighted_J_cols, axis=1)
+    expected_values = Q + weighted_J_all
+
+    optimal_indices = np.argmin(expected_values, axis=1)
+    u_opt = np.array(C.input_space)[optimal_indices]
+
+    return J_opt, u_opt
 
 def select_solver(K, L):
-    if K > 300:
+    if K > 1000:
+        log("PI solver selected")
         return solver_PI
     else:
+        log("LP solver selected")
         return solver_LP
 
 def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
@@ -573,7 +614,7 @@ def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
     log("Computing Transition Probabilities...")
     T_prob_start = record_time()
     P_list = compute_transition_probabilities_vectorized(C, K, S_arr)
-    P = sp.vstack(P_list).tocsr()
+    P_stack = sp.vstack(P_list).tocsr()
     T_prob_end = record_time()
 
 
@@ -586,7 +627,7 @@ def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
     log("Running solver")
     T_solver_start = record_time()
     solver = select_solver(K, L)
-    J, policy = solver(K, L, P, Q)
+    J, policy = solver(C, K, L, P_list, P_stack, Q)
     T_solver_end = record_time()
 
     # Final Timing Stats
