@@ -6,6 +6,7 @@ from itertools import product
 
 from tqdm import tqdm
 import json
+import time
 
 import numpy as np
 import pandas as pd
@@ -98,7 +99,7 @@ def main():
 
 
     # Enable line by line profiling
-    line_profile = False
+    line_profile = True
     if line_profile:
         lp = LineProfiler()
         lp.add_module(Solver)
@@ -171,6 +172,10 @@ def main():
     mean_times_df = timing_cols.groupby(df.index % len(selectors)).mean()
     mean_times_df.index = [selector.__name__ for selector in selectors]
     print(mean_times_df)
+
+    if line_profile:
+        with open(f"extended_testing/profiles/profile_{time.strftime('%H_%M_%S')}.txt", 'w') as f:
+            lp.print_stats(f, stripzeros=True)
 
 if __name__ == "__main__":
     main()

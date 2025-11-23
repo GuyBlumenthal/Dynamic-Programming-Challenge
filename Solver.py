@@ -59,8 +59,7 @@ class CustomStateSpace:
 
             # 2. Loop over the product of these allowed H-options
             for h_tuple in h_iterable:
-                state = prefix + h_tuple
-                self.valid_states_with_indices[self.current_index, :] = state
+                self.valid_states_with_indices[self.current_index, :] = prefix + h_tuple
                 self.current_index += 1
 
             return        # --- Recursive Step: Add d_i ---
@@ -72,9 +71,9 @@ class CustomStateSpace:
             d_options = self.S_d
 
         for d in d_options:
-            # 1. Sum constraint
+            # 1. Sum constraint, d_options is sorted so if we violate once, the rest are violated
             if current_d_sum + d > self.X_limit:
-                continue
+                break
 
             # 3. d1/d2 constraint (d1=0 -> d2>0)
             # d_index == 1 is d2
@@ -95,9 +94,6 @@ class CustomStateSpace:
                 current_d_list,
                 current_d_sum + d,
                 d_index + 1,
-                # Update zero_seen flag:
-                # (zero_seen is True if it was already True, OR
-                # if we are adding a zero *after* d1)
                 next_spot0
             )
 
@@ -117,7 +113,7 @@ class CustomStateSpace:
 
         # --- Cache constants from C for minor speedup ---
         self.S_y, self.S_v = C.S_y, C.S_v
-        self.S_d, self.S_d1 = C.S_d, C.S_d1
+        self.S_d, self.S_d1 = sorted(C.S_d), sorted(C.S_d1)
         self.S_h, self.S_h_default = C.S_h, C.S_h[0]
         self.M, self.X_limit = C.M, C.X - 1
 
@@ -202,7 +198,7 @@ def build_A_fast(A_all, K, policy, range_k):
     selector_indices = policy * K + range_k
     return A_all[selector_indices, :]
 
-def compute_transition_probabilities_vectorized(C, K, S_arr):
+def compute_transition_probabilities_vectorized(C: Const, K, S_arr):
     """
     Optimized transition probability calculation using Coordinate Hashing.
 
@@ -219,8 +215,8 @@ def compute_transition_probabilities_vectorized(C, K, S_arr):
 
     # Calculate ranges and strides for Perfect Hashing
     # We map every state to a unique integer: Hash = Sum( (val - min) * stride )
-    mins = S_arr.min(axis=0)
-    maxs = S_arr.max(axis=0)
+    mins = np.array([0, -C.V_max, *[0 for _ in range(C.M)], *[C.S_h[0] for _ in range(C.M)]])
+    maxs = np.array([C.Y, C.V_max, *[C.X for _ in range(C.M)], *[C.S_h[-1] for _ in range(C.M)]])
     ranges = maxs - mins + 1
 
     # Compute strides (column-major-like logic, but order doesn't matter as long as consistent)
@@ -315,7 +311,9 @@ def compute_transition_probabilities_vectorized(C, K, S_arr):
     # p = (s - (Dmin-1)) / (X - Dmin)
     numerator = s_values - (C.D_min - 1)
     denominator = float(C.X - C.D_min)
-    p_spawn_vec = np.clip(numerator / denominator, 0.0, 1.0)
+    p_spawn_vec = numerator / denominator
+    p_spawn_vec[p_spawn_vec < 0.0] = 0.0
+    p_spawn_vec[p_spawn_vec > 1.0] = 1.0
 
     # Identify which pipe index 'k' to spawn into (first available slot)
     k_spawn_indices = np.full(N, C.M - 1, dtype=int)
@@ -352,12 +350,23 @@ def compute_transition_probabilities_vectorized(C, K, S_arr):
         # v_{k+1} = v_k + u + w - g
         # Broadcast: (N, 1) + scalar + (1, n_w) -> (N, n_w)
         V_next_matrix = V[:, None] + u + W_flap[None, :] - C.g
-        V_next_flat = np.clip(V_next_matrix, -C.V_max, C.V_max).flatten()
+
+        # np.clip(V_next_matrix, -C.V_max, C.V_max).flatten()
+        V_next_flat = V_next_matrix.flatten()
+        V_next_flat[V_next_flat < -C.V_max] = -C.V_max
+        V_next_flat[V_next_flat > C.V_max] = C.V_max
+
 
         # y_{k+1} = y_k + v_k (Note: Uses CURRENT v_k)
         Y_repeated = np.repeat(Y, n_w)
         V_curr_repeated = np.repeat(V, n_w)
-        Y_next_flat = np.clip(Y_repeated + V_curr_repeated, 0, C.Y - 1).astype(np.int32)
+
+        # np.clip(Y_repeated + V_curr_repeated, 0, C.Y - 1).astype(np.int32)
+        Y_next_flat = Y_repeated + V_curr_repeated
+        Y_next_flat[Y_next_flat < 0] = 0
+        Y_next_flat[Y_next_flat > C.Y - 1] = C.Y - 1
+        Y_next_flat = Y_next_flat.astype(np.int32)
+
 
         # Filter Collided Sources (They don't transition)
         source_idxs_base = np.repeat(np.arange(N), n_w)
@@ -411,7 +420,10 @@ def compute_transition_probabilities_vectorized(C, K, S_arr):
 
             # Calculate 's' distance to fill
             # s = X - 1 - sum(d)
-            S_s_fill = np.clip((C.X - 1) - np.sum(S_D, axis=1), C.D_min, C.X - 1)
+            S_s_fill = (C.X - 1) - np.sum(S_D, axis=1)
+            S_s_fill[S_s_fill < C.D_min]= C.D_min
+            S_s_fill[S_s_fill > C.X - 1]= C.X - 1
+
 
             # Iterate over possible new heights (Uniform probability)
             for h_new in C.S_h:
