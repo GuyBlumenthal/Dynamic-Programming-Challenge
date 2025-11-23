@@ -27,7 +27,7 @@ from Solver import solution, generate_state_space
 import simulation
 
 from line_profiler import LineProfiler
-from Solver import compute_transition_probabilities_vectorized
+import Solver
 import time
 
 def main(use_solution_if_exist=True) -> None:
@@ -65,11 +65,9 @@ def main(use_solution_if_exist=True) -> None:
         if profiler:
             print("Solving for optimal policy ...")
             lp = LineProfiler()
-            lp.add_callable(compute_transition_probabilities_vectorized)
-            lp.add_callable(generate_state_space)
+            lp.add_module(Solver)
             wrapper = lp(solution)
             J_opt, u_opt = wrapper(C)
-            # J_opt, u_opt = solution(C)
             with open(f"extended_testing/profiles/profile_{time.strftime('%H_%M_%S')}.txt", 'w') as f:
                 lp.print_stats(f)
             print("Solution obtained.")

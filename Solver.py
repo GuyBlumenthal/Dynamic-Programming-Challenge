@@ -29,6 +29,12 @@ from ComputeExpectedStageCosts import compute_expected_stage_cost
 import time
 
 from itertools import product
+
+SOLVER_DEV_MODE = True
+
+log = print if SOLVER_DEV_MODE else lambda x: None
+record_time = time.perf_counter if SOLVER_DEV_MODE else lambda: 0
+
 class CustomStateSpace:
     # ================== D-Vector Recursive Builder ==================
     def build_d_recursive(self, y, v, current_d_list, current_d_sum, d_index, spot0):
@@ -152,12 +158,12 @@ class CustomStateSpace:
 
         return self.current_index, self.valid_states_with_indices[:self.current_index, :]
 
-def generate_state_space(C):
-    css = CustomStateSpace()
-    K, S_arr = css.custom_state_space(C)
-
-    # Or
-    K, S_arr = K, np.array(C.state_space, dtype=np.int32)
+def generate_state_space(C: Const):
+    if hasattr(C, '_state_space'):
+        K, S_arr = C.K, np.array(C.state_space, dtype=np.int32)
+    else:
+        css = CustomStateSpace()
+        K, S_arr = css.custom_state_space(C)
 
     return K, S_arr
 
@@ -457,35 +463,13 @@ def compute_expected_stage_cost_fast(C: Const, K: int):
     ]), (K, 1))
 
 
-def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
-    # 1. Setup Phase
-    # -----------------------------------------------------
-    Total_start = time.perf_counter()
-    print("Computing Transition Probabilities... (Optimized Hashing)")
-
-    T_start = time.perf_counter()
-
-    # 1. Compute P matrices
-    K, S_arr = generate_state_space(C)
-    P_list = compute_transition_probabilities_vectorized(C, K, S_arr)
-    L = C.L
-
-    # 2. Stack P: Shape (L * K, K)
-    P_stack = sp.vstack(P_list).tocsr()
-
-    T_end = time.perf_counter()
-
-    print("Computing Stage Costs...")
-    Q = compute_expected_stage_cost_fast(C, K)
-
-    # 2. Solver Parameters & Pre-calculation
-    # -----------------------------------------------------
+def solver_PI(K, L, P, Q):
     gamma = 1.0
     dtype = np.float64
 
     print("Pre-calculating System Matrices (A_all)...")
     # --- OPTIMIZATION: Build A_all once ---
-    A_all = build_A_fast_setup(K, L, P_stack, gamma, dtype)
+    A_all = build_A_fast_setup(K, L, P, gamma, dtype)
 
     # Initialization
     J = np.zeros(K, dtype=dtype)
@@ -540,8 +524,8 @@ def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
             J_eval = spla.spsolve(A_sparse, b)
 
         # --- F. Policy Improvement ---
-        # P_stack.dot(J) calculates costs for ALL actions in one go
-        P_J_all = P_stack.dot(J_eval)
+        # P.dot(J) calculates costs for ALL actions in one go
+        P_J_all = P.dot(J_eval)
 
         # Reshape to (L, K) -> Transpose to (K, L)
         future_costs = P_J_all.reshape((L, K)).T
@@ -564,15 +548,60 @@ def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
         if outer_iter == max_outer_iters - 1:
             print("Warning: Max outer iterations reached without convergence.")
 
-    # 4. Final Timing Stats
-    # -----------------------------------------------------
-    Total_time = time.perf_counter() - Total_start
-    T_setup = T_end - T_start
-    T_solve = time.perf_counter() - solve_start
+    return J, policy
 
-    print("\n--- Timing Summary (Pre-calc A_all + Custom Precond) ---")
-    print(f"Transition Setup:  {T_setup:.6f}s")
-    print(f"Solver Loop:       {T_solve:.6f}s")
-    print(f"Total Runtime:     {Total_time:.6f}s")
+def solver_LP(C, K, S_arr):
+    pass
+
+def select_solver(K, L):
+    if K > 300:
+        return solver_PI
+    else:
+        return solver_LP
+
+def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
+    T_start = record_time()
+
+    log("Generating state space")
+    T_state_start = record_time()
+    K, S_arr = generate_state_space(C)
+    L = C.L
+    T_state_end = record_time()
+
+
+    log("Computing Transition Probabilities...")
+    T_prob_start = record_time()
+    P_list = compute_transition_probabilities_vectorized(C, K, S_arr)
+    P = sp.vstack(P_list).tocsr()
+    T_prob_end = record_time()
+
+
+    log("Computing Stage Costs...")
+    T_cost_start = record_time()
+    Q = compute_expected_stage_cost_fast(C, K)
+    T_cost_end = record_time()
+
+
+    log("Running solver")
+    T_solver_start = record_time()
+    solver = select_solver(K, L)
+    J, policy = solver(K, L, P, Q)
+    T_solver_end = record_time()
+
+    # Final Timing Stats
+    # -----------------------------------------------------
+    T_total_ms  = (record_time() - T_start)   * 1e3
+    T_state_ms  = (T_state_end - T_state_start)     * 1e3
+    T_prob_ms   = (T_prob_end - T_prob_start)       * 1e3
+    T_cost_ms   = (T_cost_end - T_cost_start)       * 1e3
+    T_solver_ms = (T_solver_end - T_solver_start)   * 1e3
+
+
+    log("\n--- Timing Summary (Pre-calc A_all + Custom Precond) ---")
+    log(f"State generation:   {T_state_ms:.3f}ms")
+    log(f"Transition Setup:   {T_prob_ms:.3f}ms")
+    log(f"Stage Costs:        {T_cost_ms:.3f}ms")
+    log(f"Solver:             {T_solver_ms:.3f}ms")
+    log(f"Total Runtime:      {T_total_ms:.3f}ms")
 
     return J, policy
