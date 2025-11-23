@@ -505,7 +505,7 @@ def solver_PI(C, K, L, P_list, P_stack, Q):
         A_sparse = build_A_fast(A_all, K, policy, range_k)
 
         # --- 2. Preconditioner ---
-        M = make_preconditioner(A_sparse, omega=0.8, inner_iters=5, dtype=dtype)
+        # M = make_preconditioner(A_sparse, omega=0.8, inner_iters=5, dtype=dtype)
 
         # --- C. Right-Hand Side ---
         b = Q[range_k, policy].astype(dtype)
@@ -519,7 +519,7 @@ def solver_PI(C, K, L, P_list, P_stack, Q):
                 tol=gmres_tol,
                 restart=gmres_restart,
                 maxiter=max_inner_iters,
-                M=M
+                # M=M
             )
             if info != 0:
                 J_eval = spla.spsolve(A_sparse, b)
@@ -594,7 +594,7 @@ def solver_LP(C, K, L, P_list, P_stack, Q):
     return J_opt, u_opt
 
 def select_solver(K, L):
-    if K > 1000:
+    if K > 600:
         log("PI solver selected")
         return solver_PI
     else:

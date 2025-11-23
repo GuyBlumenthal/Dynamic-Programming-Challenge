@@ -10,6 +10,8 @@ import json
 import numpy as np
 import pandas as pd
 
+from copy import deepcopy
+
 TEST_PARAM_RANGES = {
     "x": [6, 8, 12],
 
@@ -70,6 +72,12 @@ def gen_tests():
 
     return out_tests
 
+def select_LP(K, L):
+    return Solver.solver_LP
+
+def select_PI(K, L):
+    return Solver.solver_PI
+
 def compare_solutions(sol_A, sol_B):
     J_a, U_a = sol_A
     J_b, U_b = sol_B
@@ -81,40 +89,60 @@ def compare_solutions(sol_A, sol_B):
         print("Wrong optimal cost!")
         return False
 
-    if not np.array_equal(U_a, U_b):
-        print("Policy differs from golden (may be OK if ties exist)")
+    # if not np.array_equal(U_a, U_b):
+    #     print("Policy differs from golden (may be OK if ties exist)")
 
     return True
 
 def main():
-    tests = gen_tests()
 
-    lp = LineProfiler()
 
-    lp.add_module(Solver)
+    # Enable line by line profiling
+    line_profile = False
+    if line_profile:
+        lp = LineProfiler()
+        lp.add_module(Solver)
+        solution = lp(Solver.solution)
+    else:
+        solution = Solver.solution
 
-    # Select solution configuration
-    line_profile = True
-    solution = lp(Solver.solution) if line_profile else Solver.solution
-
+    # Enable logging (print statement) in the solver
     verbose_solver = False
     if not verbose_solver:
         Solver.log = lambda x: None
+
+    # True -> Test over grid of solution parameters
+    # False -> Test over test cases in test.py and main.py
+    test_grid = False
+    if test_grid:
+        tests = gen_tests()
+    else:
+        import pickle
+        tests = [{}]
+        # tests = []
+        for test_nr in range(4):
+            with open(f"tests/test{test_nr}.pkl", "rb") as f:
+                tests.append(pickle.load(f))
+
+    # Define the set of selectors to run the problem on. The first two will have their solution compared
+    selectors = [
+        select_LP,              # Only run LP -> Use this one first to remove invalid tests quickly
+        select_PI,              # Only run PI
+        Solver.select_solver,   # Default selector (Defined in Solver.py)
+    ]
 
     # Run tests
     for test in tqdm(tests, desc="Test Progress"):
 
         try:
-            # Run LP first as it will crash for impossible problems, PI will run for a long time
+            results = []
             C = apply_overrides_and_instantiate(test)
-            Solver.select_solver = lambda K, L: Solver.solver_LP
-            LP = solution(C)
+            for selector in selectors:
+                C_instance = deepcopy(C)
+                Solver.select_solver = selector
+                results.append(solution(C_instance))
 
-            C = apply_overrides_and_instantiate(test)
-            Solver.select_solver = lambda K, L: Solver.solver_PI
-            PI = solution(C)
-
-            if not compare_solutions(PI, LP):
+            if not compare_solutions(results[0], results[1]):
                 raise Exception(f"""
                 ##################################################
                     Cost mismatch on problem {test}
@@ -123,7 +151,7 @@ def main():
             # This is an infinite problem or we had problem mismatch
             print(e)
 
-    pd.DataFrame(Solver.timing_array, columns=[
+    df = pd.DataFrame(Solver.timing_array, columns=[
         "prob_size",
         "solver",
         "total_t",
@@ -131,7 +159,18 @@ def main():
         "prob_t",
         "cost_t",
         "solver_t",
-    ]).to_csv("extended_testing/profiles/tests.csv")
+    ])
+
+    save_output = False
+    if save_output:
+        df.to_csv("extended_testing/profiles/tests.csv")
+
+    print(df)
+
+    timing_cols = df.loc[:, "total_t":"solver_t"]
+    mean_times_df = timing_cols.groupby(df.index % len(selectors)).mean()
+    mean_times_df.index = [selector.__name__ for selector in selectors]
+    print(mean_times_df)
 
 if __name__ == "__main__":
     main()
