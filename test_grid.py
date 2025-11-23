@@ -7,12 +7,15 @@ from itertools import product
 from tqdm import tqdm
 import json
 
+import numpy as np
+import pandas as pd
+
 TEST_PARAM_RANGES = {
-    "x": [8, 12],
+    "x": [6, 8, 12],
 
-    "Y": [12],
+    "Y": [6, 8, 12],
 
-    "V_max": [2],
+    "V_max": [1, 2, 3],
 
     "U_no_flap": [0],
 
@@ -22,7 +25,7 @@ TEST_PARAM_RANGES = {
 
     "V_dev": [1, 2],
 
-    "D_min": [5],
+    "D_min": [4, 5],
 
     "G": [1],
 
@@ -67,6 +70,22 @@ def gen_tests():
 
     return out_tests
 
+def compare_solutions(sol_A, sol_B):
+    J_a, U_a = sol_A
+    J_b, U_b = sol_B
+
+    RTOL = 1e-4
+    ATOL = 1e-7
+
+    if not np.allclose(J_a, J_b, rtol=RTOL, atol=ATOL):
+        print("Wrong optimal cost!")
+        return False
+
+    if not np.array_equal(U_a, U_b):
+        print("Policy differs from golden (may be OK if ties exist)")
+
+    return True
+
 def main():
     tests = gen_tests()
 
@@ -86,18 +105,33 @@ def main():
     for test in tqdm(tests, desc="Test Progress"):
 
         try:
-            C = apply_overrides_and_instantiate(test)
-            Solver.select_solver = lambda K, L: Solver.solver_PI
-            solution(C)
+            # Run LP first as it will crash for impossible problems, PI will run for a long time
             C = apply_overrides_and_instantiate(test)
             Solver.select_solver = lambda K, L: Solver.solver_LP
-            solution(C)
+            LP = solution(C)
+
+            C = apply_overrides_and_instantiate(test)
+            Solver.select_solver = lambda K, L: Solver.solver_PI
+            PI = solution(C)
+
+            if not compare_solutions(PI, LP):
+                raise Exception(f"""
+                ##################################################
+                    Cost mismatch on problem {test}
+                ##################################################""")
         except Exception as e:
-            # This is an infinite problem
+            # This is an infinite problem or we had problem mismatch
             print(e)
 
-    with open("test_grid.txt", 'w') as f:
-        json.dump(Solver.timing_array, f)
+    pd.DataFrame(Solver.timing_array, columns=[
+        "prob_size",
+        "solver",
+        "total_t",
+        "state_t",
+        "prob_t",
+        "cost_t",
+        "solver_t",
+    ]).to_csv("extended_testing/profiles/tests.csv")
 
 if __name__ == "__main__":
     main()

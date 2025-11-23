@@ -641,13 +641,12 @@ def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
 
         global timing_array
         timing_array.append((
-            K, solver.__name__, (
+            K, solver.__name__,
                 T_total_ms,
                 T_state_ms,
                 T_prob_ms,
                 T_cost_ms,
                 T_solver_ms,
-            )
         ))
 
         log("\n--- Timing Summary (Pre-calc A_all + Custom Precond) ---")
