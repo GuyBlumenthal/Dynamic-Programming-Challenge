@@ -31,6 +31,7 @@ import time
 from itertools import product
 
 SOLVER_DEV_MODE = True
+timing_array = []
 
 log = print if SOLVER_DEV_MODE else lambda x: None
 record_time = time.perf_counter if SOLVER_DEV_MODE else lambda: 0
@@ -590,18 +591,29 @@ def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
 
     # Final Timing Stats
     # -----------------------------------------------------
-    T_total_ms  = (record_time() - T_start)   * 1e3
-    T_state_ms  = (T_state_end - T_state_start)     * 1e3
-    T_prob_ms   = (T_prob_end - T_prob_start)       * 1e3
-    T_cost_ms   = (T_cost_end - T_cost_start)       * 1e3
-    T_solver_ms = (T_solver_end - T_solver_start)   * 1e3
+    if SOLVER_DEV_MODE:
+        T_total_ms  = (record_time() - T_start)   * 1e3
+        T_state_ms  = (T_state_end - T_state_start)     * 1e3
+        T_prob_ms   = (T_prob_end - T_prob_start)       * 1e3
+        T_cost_ms   = (T_cost_end - T_cost_start)       * 1e3
+        T_solver_ms = (T_solver_end - T_solver_start)   * 1e3
 
+        global timing_array
+        timing_array.append((
+            K, solver.__name__, (
+                T_total_ms,
+                T_state_ms,
+                T_prob_ms,
+                T_cost_ms,
+                T_solver_ms,
+            )
+        ))
 
-    log("\n--- Timing Summary (Pre-calc A_all + Custom Precond) ---")
-    log(f"State generation:   {T_state_ms:.3f}ms")
-    log(f"Transition Setup:   {T_prob_ms:.3f}ms")
-    log(f"Stage Costs:        {T_cost_ms:.3f}ms")
-    log(f"Solver:             {T_solver_ms:.3f}ms")
-    log(f"Total Runtime:      {T_total_ms:.3f}ms")
+        log("\n--- Timing Summary (Pre-calc A_all + Custom Precond) ---")
+        log(f"State generation:   {T_state_ms:.3f}ms")
+        log(f"Transition Setup:   {T_prob_ms:.3f}ms")
+        log(f"Stage Costs:        {T_cost_ms:.3f}ms")
+        log(f"Solver:             {T_solver_ms:.3f}ms")
+        log(f"Total Runtime:      {T_total_ms:.3f}ms")
 
     return J, policy
