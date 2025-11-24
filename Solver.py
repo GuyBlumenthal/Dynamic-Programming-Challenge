@@ -127,8 +127,6 @@ class CustomStateSpace:
         for _ in range(self.M):
             dims.append(C.Y) # h values are 0..Y-1
 
-        self.state_to_index_array = np.full(dims, -1, dtype=np.int32)
-
         d = (np.prod(dims), 2 + 2 * self.M)
         self.valid_states_with_indices = np.zeros(d, dtype=np.int32)
 
@@ -606,12 +604,12 @@ def solver_LP(C, K, L, P_list, P_stack, Q):
     return J_opt, u_opt
 
 def select_solver(K, L):
-    if K > 600:
+    # if K > 600:
         log("PI solver selected")
         return solver_PI
-    else:
-        log("LP solver selected")
-        return solver_LP
+    # else:
+        # log("LP solver selected")
+        # return solver_LP
 
 def solution(C: Const) -> tuple[np.ndarray, np.ndarray]:
     T_start = record_time()
