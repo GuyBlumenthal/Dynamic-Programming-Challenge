@@ -40,7 +40,7 @@ record_time = time.perf_counter if SOLVER_DEV_MODE else lambda: 0
 
 class CustomStateSpace:
     # ================== D-Vector Recursive Builder ==================
-    def build_d_recursive(self, y, v, current_d_list, current_d_sum, d_index, spot0):
+    def build_d_recursive(self, prefix, current_d_list, current_d_sum, d_index, spot0):
         """
         Recursively builds the D-vector (d1, ..., dM) for a given
         (y, v) prefix.
@@ -53,12 +53,10 @@ class CustomStateSpace:
         # --- Base Case: D-vector is complete ---
         if d_index == self.M:
             # D-vector is built, now start building the H-vector
-            h_iterable = self.possible_h_iterables[spot0]
+            prefix = prefix + current_d_list
 
-            prefix = [y, v] + current_d_list
-
-            # 2. Loop over the product of these allowed H-options
-            for h_tuple in h_iterable:
+            # Loop over the product of these allowed H-options
+            for h_tuple in self.possible_h_iterables[spot0]:
                 self.valid_states_with_indices[self.current_index, :] = prefix + h_tuple
                 self.current_index += 1
 
@@ -90,7 +88,7 @@ class CustomStateSpace:
             # Recurse with the added d
             current_d_list[d_index] = d
             self.build_d_recursive(
-                y, v,
+                prefix,
                 current_d_list,
                 current_d_sum + d,
                 d_index + 1,
@@ -151,7 +149,7 @@ class CustomStateSpace:
             for v in self.S_v:
                 current_d_list_for_v = [0] * self.M
                 # Start the recursion for the D-vector
-                self.build_d_recursive(y, v, current_d_list_for_v, 0, 0, 0)
+                self.build_d_recursive([y, v], current_d_list_for_v, 0, 0, 0)
 
         return self.current_index, self.valid_states_with_indices[:self.current_index, :]
 
