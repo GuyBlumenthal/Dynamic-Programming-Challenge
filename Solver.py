@@ -500,9 +500,6 @@ def solver_PI(C, K, L, P_list, P_stack, Q):
     gmres_restart = 60
     max_inner_iters = 30
 
-    delta_J_prev = 1.0
-    solve_start = time.perf_counter()
-
     # 3. Policy Iteration Loop
     # -----------------------------------------------------
     for outer_iter in range(max_outer_iters):
@@ -546,13 +543,11 @@ def solver_PI(C, K, L, P_list, P_stack, Q):
 
         # --- G. Convergence Check ---
         policy_changes = np.sum(new_policy != policy)
-        delta_J = np.max(np.abs(J_eval - J_prev))
 
-        delta_J_prev = delta_J
         J = J_eval
         policy = new_policy
 
-        if policy_changes == 0 and delta_J < outer_tol:
+        if policy_changes == 0 and np.allclose(J_eval, J_prev, atol=1e-4, rtol=1e-7):
             log(f"Converged in {outer_iter+1} iterations.")
             break
 
