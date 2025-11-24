@@ -55,7 +55,7 @@ class CustomStateSpace:
             # D-vector is built, now start building the H-vector
             h_iterable = self.possible_h_iterables[spot0]
 
-            prefix = (y, v) + tuple(current_d_list)
+            prefix = [y, v] + current_d_list
 
             # 2. Loop over the product of these allowed H-options
             for h_tuple in h_iterable:
@@ -125,7 +125,7 @@ class CustomStateSpace:
         for _ in range(self.M):
             dims.append(C.X) # d values are 0..X-1
         for _ in range(self.M):
-            dims.append(C.Y) # h values are 0..Y-1
+            dims.append(len(C.S_h)) # h values are 0..Y-1
 
         d = (np.prod(dims), 2 + 2 * self.M)
         self.valid_states_with_indices = np.zeros(d, dtype=np.int32)
@@ -144,7 +144,7 @@ class CustomStateSpace:
                 self.h_options_default if i >= spot0 else self.h_options_all
                 for i in range(1, self.M)
             ])
-        self.possible_h_iterables = [list(product(*h_iter)) for h_iter in possible_h_iterables]
+        self.possible_h_iterables = [list([list(i) for i in product(*h_iter)]) for h_iter in possible_h_iterables]
 
         # The outer loops *must* be y, then v, to maintain order
         for y in self.S_y:
