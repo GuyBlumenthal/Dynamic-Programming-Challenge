@@ -49,7 +49,7 @@ def main(use_solution_if_exist=True) -> None:
         if len(u_opt)!=C.K:
             u_opt = None
 
-    profiler = True
+    profiler = False
 
     if u_opt == None:
         # Build P and Q

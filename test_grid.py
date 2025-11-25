@@ -77,7 +77,10 @@ def select_LP(K, L):
     return Solver.solver_LP
 
 def select_PI(K, L):
-    return Solver.solver_PI
+    return Solver.solver_PI_No_M
+
+def select_PI_M(K, L):
+    return Solver.solver_PI_With_M
 
 def compare_solutions(sol_A, sol_B):
     J_a, U_a = sol_A
@@ -99,7 +102,7 @@ def main():
 
 
     # Enable line by line profiling
-    line_profile = True
+    line_profile = False
     if line_profile:
         lp = LineProfiler()
         lp.add_module(Solver)
@@ -129,7 +132,8 @@ def main():
     selectors = [
         select_LP,              # Only run LP -> Use this one first to remove invalid tests quickly
         select_PI,              # Only run PI
-        Solver.select_solver,   # Default selector (Defined in Solver.py)
+        select_PI_M,              # Only run PI
+        # Solver.select_solver,   # Default selector (Defined in Solver.py)
     ]
 
     # Run tests
@@ -152,7 +156,7 @@ def main():
             # This is an infinite problem or we had problem mismatch
             print(e)
 
-    df = pd.DataFrame(Solver.timing_array, columns=[
+    total_df = pd.DataFrame(Solver.timing_array, columns=[
         "prob_size",
         "solver",
         "total_t",
@@ -160,18 +164,18 @@ def main():
         "prob_t",
         "cost_t",
         "solver_t",
-    ])
+    ]).sort_values(["prob_size", "solver"])
 
     save_output = False
     if save_output:
-        df.to_csv("extended_testing/profiles/tests.csv")
+        total_df.to_csv("extended_testing/profiles/tests.csv")
 
-    print(df)
-
-    timing_cols = df.loc[:, "total_t":"solver_t"]
-    mean_times_df = timing_cols.groupby(df.index % len(selectors)).mean()
+    timing_cols = total_df.loc[:, "total_t":"solver_t"]
+    mean_times_df = timing_cols.groupby(total_df.index % len(selectors)).mean()
     mean_times_df.index = [selector.__name__ for selector in selectors]
-    print(mean_times_df)
+
+    print(total_df)
+    # print(mean_times_df)
 
     if line_profile:
         with open(f"extended_testing/profiles/profile_{time.strftime('%H_%M_%S')}.txt", 'w') as f:
