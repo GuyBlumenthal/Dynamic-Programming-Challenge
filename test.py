@@ -30,11 +30,11 @@ ATOL = 1e-7
 
 def apply_overrides_and_instantiate(overrides: dict) -> Const:
     """Apply overrides to Const class and instantiate it.
-
+    
     Args:
         overrides (dict): Dictionary with attribute names as keys and
             the values to override as values.
-
+        
     Returns:
         Const: Instance of Const with overridden attributes.
     """
@@ -42,18 +42,11 @@ def apply_overrides_and_instantiate(overrides: dict) -> Const:
         if hasattr(Const, k):
             setattr(Const, k, v)
     return Const()
-
-def run_solution(test_nr: int) -> tuple[np.array, np.array]:
-    # Load constants overrides
-    with open(f"tests/test{test_nr}.pkl", "rb") as f:
-        overrides = pickle.load(f)
-    C = apply_overrides_and_instantiate(overrides)
-
-    _ = solution(C)
+    
 
 def run_test(test_nr: int) -> None:
     """Run a single test case.
-
+    
     Args:
         test_nr (int): Test case number.
     """
@@ -66,13 +59,13 @@ def run_test(test_nr: int) -> None:
 
     # Load goldens
     gold = np.load(f"tests/test{test_nr}.npz")
-
+    
     # Compute fresh
     P = compute_transition_probabilities(C)
     Q = compute_expected_stage_cost(C)
-
+    
     passed = True
-
+    
     # check all rows in [0,1] (within tolerance)
     row_sums = P.sum(axis=1)  # (K, L)
     eps = 1e-10
@@ -98,6 +91,17 @@ def run_test(test_nr: int) -> None:
 
     J_opt, u_opt = solution(C)
     if not np.allclose(J_opt, gold["J"], rtol=RTOL, atol=ATOL):
+        abs_error = np.max(np.abs(J_opt - gold["J"]))
+        
+        # Calculate relative error: |J_opt - J_gold| / |J_gold|. 
+        # Add a small epsilon (1e-10) to the denominator for numerical stability
+        # if any gold cost is zero or extremely close to zero.
+        rel_error = np.max(np.abs(J_opt - gold["J"]) / (np.abs(gold["J"]) + 1e-10))
+        
+        print("\n--- Numerical Error Diagnostics ---")
+        print(f"  Max Absolute Error: {abs_error:.6e}")
+        print(f"  Max Relative Error: {rel_error:.6e}")
+        print("-----------------------------------")
         print("Wrong optimal cost")
         passed = False
     else:

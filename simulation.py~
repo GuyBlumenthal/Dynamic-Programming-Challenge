@@ -307,7 +307,7 @@ def run_simulation(C: Const, policy: np.ndarray | None = None) -> None:
         
         #print("Y COORDINATE ", x.y)
         #print("VEL          ", x.v)
-        #print("y:", x.y, "v:", x.v, "D:", x.D, "H:", x.H)
+        print("y:", x.y, "v:", x.v, "D:", x.D, "H:", x.H)
         
         # Handle events
         for event in pygame.event.get():
@@ -332,17 +332,10 @@ def run_simulation(C: Const, policy: np.ndarray | None = None) -> None:
             elif keys[pygame.K_w]:
                 u = C.U_weak
         else:
-            u_index = policy[x.to_index()]
-            u = C.input_space[u_index]
-            '''
-            if u == C.U_strong:
-                a_str = "Strong"
-            elif u == C.U_weak:
-                a_str = "Weak"
-            else:
-                a_str = "No Flap"
-            print(a_str)
-            '''
+            print("AUTOMATIC MODE")
+            u = policy[x.to_index()]
+            if u not in C.input_space:
+                u = 0
                 
         # Rendering
         renderer.screen.fill(renderer.C_BACK)
@@ -368,6 +361,29 @@ if __name__ == "__main__":
     from Solver import solution
     from ComputeTransitionProbabilities import compute_transition_probabilities
     from ComputeExpectedStageCosts import compute_expected_stage_cost
+    
+    P = compute_transition_probabilities(default_C)
+    print("p type", type(P))
+    npP = np.array(P)
+    
+    Q = compute_expected_stage_cost(default_C)
+    npQ = np.array(Q)
+    
+    print("P Shape", npP.shape)
+    print("Q shape", npQ.shape)    
+    
+    
+    transitions = {}
+
+    for i in range(default_C.K):
+        for l in range(default_C.L):
+            nonzero_next = []
+            for j in range(default_C.K):
+                p = P[i, j, l]
+                if p > 0:
+                    nonzero_next.append((j, p))
+            if nonzero_next:  # only store if there is at least one nonzero
+                transitions[(i, l)] = nonzero_next
         
         
     J_opt, u_opt = solution(default_C)

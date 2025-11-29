@@ -1,6 +1,0 @@
-numpy>=1.24,<2
-scipy>=1.11,<1.12
-pygame
-matplotlib
-tqdm
-line-profiler

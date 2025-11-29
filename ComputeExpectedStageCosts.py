@@ -18,25 +18,6 @@ Institute for Dynamic Systems and Control
 import numpy as np
 from Const import Const
 
-from typing import Tuple
-
-def compute_expected_stage_cost_solver(C: Const, K: int) -> Tuple[np.array, np.array]:
-    costs_row = np.array([
-        -1,                # Cost for action 0 (None)
-        C.lam_weak - 1,    # Cost for action 1 (Weak)
-        C.lam_strong - 1   # Cost for action 2 (Strong)
-    ])
-
-    b = np.concatenate((
-        np.repeat(costs_row[0], K),  # Column 0 of Q
-        np.repeat(costs_row[1], K),  # Column 1 of Q
-        np.repeat(costs_row[2], K)   # Column 2 of Q
-    ))
-
-    Q = b.reshape((K, C.L), order='F')
-
-    return Q, b
-
 def compute_expected_stage_cost(C: Const) -> np.array:
     """Computes the expected stage cost for the given problem.
 
@@ -49,8 +30,20 @@ def compute_expected_stage_cost(C: Const) -> np.array:
             - L is the size of the input space; and
             - Q[i,l] corresponds to the expected stage cost incurred when using input l at state i.
     """
-    return np.tile(np.array([
-        -1,                # Cost for action 0 (None)
-        C.lam_weak - 1,    # Cost for action 1 (Weak)
-        C.lam_strong - 1   # Cost for action 2 (Strong)
-    ]), (C.K, 1))
+    
+    Q = np.ones((C.K, C.L)) * np.inf
+
+    # TODO fill the expected stage cost Q here
+    for l, u in enumerate(C.input_space):
+        if u == C.U_no_flap:
+            h = 0
+        elif u == C.U_weak:
+            h = C.lam_weak
+        elif u == C.U_strong:
+            h = C.lam_strong
+        else:
+            raise ValueError(f"Unknown input: {u}")
+        
+        Q[:, l] = h - 1 
+        
+    return Q

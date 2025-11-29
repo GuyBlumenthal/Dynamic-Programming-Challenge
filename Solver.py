@@ -17,261 +17,134 @@ Institute for Dynamic Systems and Control
 """
 
 import numpy as np
-from scipy.optimize import linprog
-from scipy.sparse import csc_matrix, vstack, eye
+import scipy.sparse as sp
+import scipy.sparse.linalg as spla
+
 from Const import Const
-from time import time_ns
+from ComputeTransitionProbabilities import compute_transition_probabilities
+from ComputeExpectedStageCosts import compute_expected_stage_cost
 
-from utils import CustomStateSpace
+from utils import compute_transition_probabilities_fast, build_A, make_preconditioner, compute_transition_probabilities_vectorized
 
-from ComputeExpectedStageCosts import compute_expected_stage_cost_solver as compute_expected_stage_cost
-from ComputeExpectedStageCosts import compute_expected_stage_cost as compute_expected_stage_cost_old
-from ComputeTransitionProbabilities import compute_transition_probabilities_sparse as compute_transition_probabilities
+import time
 
-from ComputeTransitionProbabilities import compute_transition_probabilities as compute_transition_probabilities_solver
+def solution(C: Const) -> tuple[np.ndarray, np.ndarray]: 
+    Total_start = time.perf_counter()
 
-def solution_template(C: Const) -> tuple[np.array, np.array]:
-    """Computes the optimal cost and the optimal control policy.
+    print("Computing Transition Probabilities... (fast)")
+    T_start_time = time.perf_counter()
+    P_list = compute_transition_probabilities_vectorized(C)#compute_transition_probabilities_fast(C)
+    
+    # --- OPTIMIZATION: Pre-Stack P Matrices ---
+    P_stack = sp.vstack(P_list).tocsr()
+    
+    del P_list 
+    
+    T_end_time = time.perf_counter()
 
-    You can solve the SSP by any method:
-    - Value Iteration
-    - Policy Iteration
-    - Linear Programming
-    - A combination of the above
-    - Others?
-
-    Args:
-        C (Const): The constants describing the problem instance.
-
-    Returns:
-        np.array: The optimal cost to go for the stochastic SPP,
-            of shape (C.K,), where C.K is the number of states.
-        np.array: The optimal control policy for the stochastic SPP,
-            of shape (C.K,), where each entry is in {0,...,C.L-1}.
-    """
-    J_opt = np.zeros(C.K)
-    u_opt = np.zeros(C.K)
-
-    # You're free to use the functions below, implemented in the previous
-    # tasks, or come up with something else.
-    # If you use them, you need to add the corresponding imports
-    # at the top of this file.
-    # P = compute_transition_probabilities(C)
-    # Q = compute_expected_stage_cost(C)
-
-    # TODO: implement Value Iteration, Policy Iteration, Linear Programming
-    # or a combination of these
-
-    return J_opt, u_opt
-
-def solution_linear_prog(C: Const) -> tuple[np.array, np.array]:
-    """Computes the optimal cost and the optimal control policy.
-
-    You can solve the SSP by any method:
-    - Value Iteration
-    - Policy Iteration
-    - Linear Programming
-    - A combination of the above
-    - Others?
-
-    Args:
-        C (Const): The constants describing the problem instance.
-
-    Returns:
-        np.array: The optimal cost to go for the stochastic SPP,
-            of shape (C.K,), where C.K is the number of states.
-        np.array: The optimal control policy for the stochastic SPP,
-            of shape (C.K,), where each entry is in {0,...,C.L-1}.
-    """
-    J_opt = np.zeros(C.K)
-    u_opt = np.zeros(C.K)
-
-    P = compute_transition_probabilities(C)
+    print("Computing Stage Costs...")
+    SC_start_time = time.perf_counter()
     Q = compute_expected_stage_cost(C)
+    SC_end_time = time.perf_counter()
 
-    c = -1 * np.ones(C.K)
+    # --- iGMRES & Solver Parameters ---
+    K, L = C.K, C.L
+    gamma = 1.0
+    dtype = np.float64
 
-    A = np.empty((C.K * C.L, C.K))
-    I = np.eye(C.K)
-    A[0:C.K, :] = I - P[:, :, 0]
-    A[C.K:2*C.K, :] = I - P[:, :, 1]
-    A[2*C.K:3*C.K, :] = I - P[:, :, 2]
+    J = np.zeros(K, dtype=dtype)
+    policy = np.zeros(K, dtype=int)  
 
-    b = Q.flatten(order='F')
+    # Tolerances
+    gmres_tol_max = 1e-5
+    gmres_tol_min = 1e-9
+    eta = 0.5
+    outer_tol = 1e-7
 
-    J_opt = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0]).x
+    # Iteration limits
+    max_outer_iters = 200
+    gmres_restart = 60
+    max_inner_iters = 15
+    
+    delta_J_prev = 1.0
+    range_k = np.arange(K, dtype=int) # Pre-compute for slicing
 
-    expected_values = Q + np.tensordot(P, J_opt, axes=([1], [0]))
-    optimal_indices = np.argmin(expected_values, axis=1)
-    u_opt = np.array(C.input_space)[optimal_indices]
+    start_time = time.perf_counter()
 
-    return J_opt, u_opt
+    # Begin iterations
+    for outer_iter in range(max_outer_iters):
+        J_prev = J.copy()
 
-def solution_linear_prog_sparse(C: Const) -> tuple[np.array, np.array]:
-    """Computes the optimal cost and the optimal control policy.
+        # --- 1. Build A (Optimized) ---
+        A_sparse = build_A(K, P_stack, policy, range_k, gamma, dtype)
 
-    You can solve the SSP by any method:
-    - Value Iteration
-    - Policy Iteration
-    - Linear Programming
-    - A combination of the above
-    - Others?
+        # --- 2. Preconditioner ---
+        M = make_preconditioner(A_sparse, omega=0.8, inner_iters=3, dtype=dtype)
 
-    Args:
-        C (Const): The constants describing the problem instance.
+        # Right-hand side
+        b = Q[range_k, policy].astype(dtype)
 
-    Returns:
-        np.array: The optimal cost to go for the stochastic SPP,
-            of shape (C.K,), where C.K is the number of states.
-        np.array: The optimal control policy for the stochastic SPP,
-            of shape (C.K,), where each entry is in {0,...,C.L-1}.
-    """
+        # Adaptive GMRES Tolerance
+        # If delta_J is large, we don't need a perfect linear solve yet.
+        if outer_iter > 0:
+            tol_k = eta * delta_J_prev
+        else:
+            tol_k = gmres_tol_max
+            
+        tol_k = min(max(tol_k, gmres_tol_min), gmres_tol_max)
 
+        # --- 3. Solve Linear System ---
+        try:
+            J_eval, info = spla.gmres(
+                A_sparse,
+                b,
+                x0=J,
+                tol=tol_k,
+                restart=gmres_restart,
+                maxiter=max_inner_iters,
+                M=M
+            )
+            if info != 0:
+                J_eval = spla.spsolve(A_sparse, b)
+        except Exception:
+            J_eval = spla.spsolve(A_sparse, b)
 
-    start_time = time_ns()
-    ss = CustomStateSpace()
-    K, state_array, valid_states = ss.custom_state_space(C)
-    P = compute_transition_probabilities(C, state_array, K, valid_states)
-    end_time = time_ns()
-    print(f"Probability calculation duration \t{(end_time - start_time) * 1e-6:.4f} ms")
+        # --- 4. Policy Improvement (Optimized) ---
+        P_J_all = P_stack.dot(J_eval)
+        
+        expected_future_costs = P_J_all.reshape((L, K)).T
+        
+        # Bellman update
+        Q_J = Q + gamma * expected_future_costs
 
-    J_opt = np.zeros(K)
-    u_opt = np.zeros(K)
+        # Greedy improvement
+        new_policy = np.argmin(Q_J, axis=1)
 
-    start_time = time_ns()
-    Q, b = compute_expected_stage_cost(C, K)
-    end_time = time_ns()
-    print(f"Stage cost duration \t\t\t{(end_time - start_time) * 1e-6:.4f} ms")
+        # Stats
+        policy_changes = np.sum(new_policy != policy)
+        delta_J = np.max(np.abs(J_eval - J_prev))
 
-    c = np.full(K, -1, np.int64)
+        delta_J_prev = delta_J
+        J = J_eval
+        policy = new_policy
 
-    # 1. Create a sparse identity matrix
-    I_sparse = eye(K, format='csc')
-
-    # 2. Create a list to hold the sparse blocks (I - P_l)
-    A_blocks = []
-
-    # 3. Loop over all actions
-    for l in range(C.L):
-        # Add the sparse (I - P_l) block to our list
-        A_blocks.append(I_sparse - P[l])
-
-    # 4. Stack all blocks vertically into one sparse matrix
-    A = vstack(A_blocks, format='csc')
-
-    # 'highs' is the best for sparse problems
-    # TODO: Need to deal with situation there is no termination EVER! we need optimal actions?
-    start_time = time_ns()
-    res = linprog(c, A_ub=A, b_ub=b, bounds=[None, 0], method='highs')
-    end_time = time_ns()
-    print(f"Solver duration \t\t\t{(end_time - start_time) * 1e-6:.4f} ms")
-
-    J_opt = res.x
-
-
-    start_time = time_ns()
-    # Create a list of weighted_J vectors, one for each action l
-    weighted_J_cols = []
-    for l in range(C.L):
-        # P[l] is (K, K) sparse, J_opt is (K,) dense
-        # The @ operator performs efficient sparse-dot-dense
-        weighted_J_l = P[l] @ J_opt  # Result is a (K,) dense vector
-        weighted_J_cols.append(weighted_J_l)
-    end_time = time_ns()
-
-    # Stack the (K,) vectors as columns into a (K, L) dense array
-    weighted_J_all = np.stack(weighted_J_cols, axis=1)
-    expected_values = Q + weighted_J_all
-
-    optimal_indices = np.argmin(expected_values, axis=1)
-    u_opt = np.array(C.input_space)[optimal_indices]
-
-    return J_opt, u_opt
-
-def solution_value_iteration(C: Const, epsilon=1e-8, max_iter=10000) -> tuple[np.array, np.array]:
-    """Computes the optimal cost and the optimal control policy.
-
-    You can solve the SSP by any method:
-    - Value Iteration
-    - Policy Iteration
-    - Linear Programming
-    - A combination of the above
-    - Others?
-
-    Args:
-        C (Const): The constants describing the problem instance.
-
-    Returns:
-        np.array: The optimal cost to go for the stochastic SPP,
-            of shape (C.K,), where C.K is the number of states.
-        np.array: The optimal control policy for the stochastic SPP,
-            of shape (C.K,), where each entry is in {0,...,C.L-1}.
-    """
-
-    ss = CustomStateSpace()
-    K, state_array, valid_states = ss.custom_state_space(C)
-
-
-    P = compute_transition_probabilities(C, state_array, K, valid_states)
-
-
-    Q, _ = compute_expected_stage_cost(C, K)
-
-    # 2. Initialize J (Value function)
-    J = np.zeros(K)
-
-    # Pre-allocate arrays
-    J_current = np.zeros(K)
-    J_next = np.empty(K)
-
-    val_l = np.empty(K)
-
-    for i in range(max_iter):
-        # 1. Initialize J_next with the value of the first action (l=0)
-        # Q[:, 0] is (K,), P[0] @ J_old is (K,)
-        np.add(Q[:, 0], (P[0] @ J_current), out=J_next)
-
-        # 2. Loop from the second action (l=1)
-        for l in range(1, C.L):
-            # Calculate the value for this action: Q_l + P_l * J_current
-            np.add(Q[:, l], (P[l] @ J_current), out=val_l)
-
-            # Update J_next to be the element-wise minimum
-            np.minimum(J_next, val_l, out=J_next)
-
-        if np.max(np.abs(J_next - J_current)) < epsilon:
-            J_current = J_next  # Converged. J_next is the final value.
+        if policy_changes == 0 and delta_J < outer_tol:
+            print(f"Converged in {outer_iter+1} iterations.")
             break
+    else:
+        print("Warning: Max outer iterations reached without convergence.")
 
-        J_current, J_next = J_next, J_current
+    end_time = time.perf_counter()
 
-    # 4. Recover the optimal policy (u_opt)
-    expected_values_cols = []
-    for l in range(C.L):
-        # Use the final converged J_opt
-        val_l = Q[:, l] + (P[l] @ J_current)
-        expected_values_cols.append(val_l)
+    T_TP = T_end_time - T_start_time
+    T_SC = SC_end_time - SC_start_time
+    T_J = end_time - start_time
+    Total_time = time.perf_counter() - Total_start
 
-    expected_values = np.stack(expected_values_cols, axis=1)
+    print("\n--- Timing Summary (Optimized with Slicing) ---")
+    print(f"Transition Probabilities: {T_TP:.6f}s")
+    print(f"Stage Costs:              {T_SC:.6f}s")
+    print(f"Policy Iteration:         {T_J:.6f}s")
+    print(f"Total Runtime:            {Total_time:.6f}s")
 
-    optimal_indices = np.argmin(expected_values, axis=1)
-    u_opt = np.array(C.input_space)[optimal_indices]
-
-    return J_current, u_opt
-
-SOL_LP = 0
-SOL_VI = 1
-
-SOLUTION_FUNCTIONS = {
-    SOL_LP: solution_linear_prog_sparse,
-    SOL_VI: solution_value_iteration,
-}
-
-def solution_picker(C: Const) -> tuple[np.array, np.array]:
-    # TODO: Minor, but this is technically overhead
-
-    selected_solution = SOLUTION_FUNCTIONS[SOL_LP]
-
-    return selected_solution(C)
-
-solution = solution_picker
+    return J, policy
